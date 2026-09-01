@@ -18,14 +18,30 @@ if TALENTVAULT_DIR.exists() and str(TALENTVAULT_DIR) not in sys.path:
     sys.path.insert(1, str(TALENTVAULT_DIR))
 
 # ==============================================================================
-# Security & Environment Configuration
+# Security & Environment-Aware Configuration
 # ==============================================================================
 SECRET_KEY = os.environ.get('SECRET_KEY') or os.environ.get(
     'HIRENEST_SECRET_KEY',
     'django-insecure-hirenest-australia-key-2026-production-ready'
 )
 
-DEBUG = os.environ.get('DEBUG', 'False').strip().lower() in ('true', '1', 't', 'yes')
+# Detect environment runtime
+IS_RENDER = bool(os.environ.get('RENDER') or os.environ.get('RENDER_EXTERNAL_HOSTNAME'))
+IS_RUNSERVER = 'runserver' in sys.argv
+IS_TESTING = (
+    'test' in sys.argv
+    or 'pytest' in sys.modules
+    or any('pytest' in arg for arg in sys.argv)
+)
+
+# DEBUG:
+# 1. If explicitly specified in environment, respect it.
+# 2. Otherwise default to True for local development / runserver, and False on Render / Production.
+debug_env = os.environ.get('DEBUG')
+if debug_env is not None:
+    DEBUG = debug_env.strip().lower() in ('true', '1', 't', 'yes')
+else:
+    DEBUG = not IS_RENDER and not os.environ.get('ENVIRONMENT', '').lower().startswith('prod')
 
 # Host configuration
 allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '')
@@ -38,6 +54,7 @@ else:
         '.hirenest.com.au',
         'localhost',
         '127.0.0.1',
+        '0.0.0.0',
         'testserver',
     ]
 
@@ -46,6 +63,7 @@ render_hostname = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if render_hostname and render_hostname not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_hostname)
 
+# Always allow local hosts and wildcard in DEBUG or local dev
 if DEBUG and '*' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('*')
 
@@ -57,10 +75,24 @@ else:
     CSRF_TRUSTED_ORIGINS = [
         'https://hirenest.com.au',
         'https://www.hirenest.com.au',
-        'http://localhost:8000',
-        'http://127.0.0.1:8000',
+        'https://*.onrender.com',
+        'https://*.render.com',
+        # Local development origins across common ports (including 8000, 8001, 8002, 8080, 3000, 5000)
         'http://localhost',
         'http://127.0.0.1',
+        'http://0.0.0.0',
+        'http://localhost:8000',
+        'http://127.0.0.1:8000',
+        'http://localhost:8001',
+        'http://127.0.0.1:8001',
+        'http://localhost:8002',
+        'http://127.0.0.1:8002',
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:5000',
+        'http://127.0.0.1:5000',
     ]
 
 if render_hostname:
@@ -68,13 +100,16 @@ if render_hostname:
     if render_origin not in CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append(render_origin)
 
-# Testing detection
-IS_TESTING = 'test' in sys.argv or 'pytest' in sys.modules or any('pytest' in arg for arg in sys.argv) or os.environ.get('USE_SQLITE') == '1'
-
 # Reverse proxy SSL header for Render HTTPS termination
+# This informs Django that Render's proxy handled SSL termination for the incoming client request.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-if not DEBUG and not IS_TESTING:
+# HTTPS & Security Redirect Settings
+# ONLY enable SSL redirects and secure-only cookies in actual production environments (Render / Live production).
+# NEVER force SSL redirection on local development, runserver, testing, or when DEBUG is True.
+is_production = not DEBUG and not IS_TESTING and (IS_RENDER or os.environ.get('ENVIRONMENT', '').lower().startswith('prod'))
+
+if is_production:
     SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', '1').strip().lower() in ('1', 'true', 'yes')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
@@ -86,10 +121,16 @@ if not DEBUG and not IS_TESTING:
         SECURE_HSTS_SECONDS = int(hsts_seconds)
         SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get('SECURE_HSTS_INCLUDE_SUBDOMAINS', '1').strip().lower() in ('1', 'true', 'yes')
         SECURE_HSTS_PRELOAD = os.environ.get('SECURE_HSTS_PRELOAD', '0').strip().lower() in ('1', 'true', 'yes')
+    else:
+        SECURE_HSTS_SECONDS = 0
 else:
+    # Local Development & Testing: strictly disable HTTPS redirects and secure-only cookies
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
 
 # TalentVault Recruiter Workspace Target URL
 TALENTVAULT_RECRUITER_WORKSPACE_URL = os.environ.get(
@@ -198,7 +239,7 @@ if DATABASE_URL:
     )
 
 # Use SQLite when running tests, or if explicitly requested via USE_SQLITE
-if 'test' in sys.argv or 'pytest' in sys.modules or os.environ.get('USE_SQLITE') == '1':
+if 'test' in sys.argv or 'pytest' in sys.modules or os.environ.get('USE_SQLITE') == '1' or not os.environ.get('DATABASE_URL'):
     sqlite_path = TALENTVAULT_DIR / 'db.sqlite3' if TALENTVAULT_DIR.exists() else BASE_DIR / 'db.sqlite3'
     DATABASES = {
         'default': {
