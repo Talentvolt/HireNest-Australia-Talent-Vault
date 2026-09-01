@@ -1,0 +1,2614 @@
+import re
+import os
+import zipfile
+import io
+import hashlib
+import pdfplumber
+import docx
+import logging
+from decimal import Decimal
+from datetime import datetime
+from django.core.files.base import ContentFile
+from django.db.models import Q
+from apps.accounts.models import User
+from apps.candidates.models import (
+    CandidateProfile, CandidateSkill, DuplicateResumeLog, 
+    Experience, Education, Project, Certification
+)
+
+logger = logging.getLogger(__name__)
+
+CONTROL_CHARS_RE = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]')
+
+# Pre-compiled regular expressions for candidate name/info validation
+NAME_CLEAN_RE = re.compile(r'^\+?\d[\d\s-]{8,}$')
+DIGITS_ONLY_RE = re.compile(r'[^\d+]')
+DIGITS_DIGIT_RE = re.compile(r'^\+?\d+$')
+EMAIL_RE = re.compile(r'[\w\.-]+@[\w\.-]+\.\w+')
+URL_RE = re.compile(r'(https?://\S+|www\.\S+)', re.I)
+STRIP_NON_ALPHA_RE = re.compile(r'[^a-z\s]')
+
+_GLOBAL_SPACY_NLP = None
+
+import threading
+import concurrent.futures
+import traceback
+_thread_local_timings = threading.local()
+
+def get_spacy_nlp():
+    global _GLOBAL_SPACY_NLP
+    if _GLOBAL_SPACY_NLP is None:
+        import sys
+        if sys.platform == 'win32':
+            # On Windows, PyTorch/EasyOCR DLL conflict can cause 0xc0000139 in thinc.
+            # Catch/bypass spaCy C-level DLL crash safely on Windows.
+            _GLOBAL_SPACY_NLP = False
+            return None
+        try:
+            import spacy
+            _GLOBAL_SPACY_NLP = spacy.load("en_core_web_sm")
+        except Exception as e:
+            logger.warning(f"Failed to load spaCy model: {e}")
+            _GLOBAL_SPACY_NLP = False
+    return _GLOBAL_SPACY_NLP if _GLOBAL_SPACY_NLP is not False else None
+
+def clean_extracted_text(text: str) -> str:
+    if not text:
+        return ""
+    # Strip null bytes and non-printable control characters, preserving normal whitespace
+    return "".join(c for c in text if c.isprintable() or c in "\n\r\t").strip()
+
+
+def sanitize_text(value, path="", print_on_nul=True):
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    
+    if "\x00" in value:
+        if print_on_nul:
+            msg = f"Found NUL byte in: {path or 'unknown'}"
+            print(msg)
+            logger.warning(msg)
+            
+    # remove \x00
+    value = value.replace("\x00", "")
+    # remove control characters except \n and \t
+    value = CONTROL_CHARS_RE.sub("", value)
+    # strip whitespace
+    return value.strip()
+
+def sanitize_recursive(data, path=""):
+    if isinstance(data, dict):
+        sanitized = {}
+        for k, v in data.items():
+            current_path = f"{path}.{k}" if path else k
+            sanitized[k] = sanitize_recursive(v, current_path)
+        return sanitized
+    elif isinstance(data, list):
+        sanitized = []
+        for idx, item in enumerate(data):
+            current_path = f"{path}[{idx}]"
+            sanitized.append(sanitize_recursive(item, current_path))
+        return sanitized
+    elif isinstance(data, str):
+        return sanitize_text(data, path)
+    elif data is None:
+        if path and any(k in path for k in ["current_ctc", "expected_ctc", "date_of_birth", "gender"]):
+            return None
+        return ""
+    elif isinstance(data, (bool, int, float)):
+        return data
+    else:
+        return sanitize_text(data, path)
+
+def parse_date_robust(date_str, default=None):
+    if not date_str or not isinstance(date_str, str):
+        return default
+    date_str = date_str.strip()
+    # Try various formats
+    formats = ["%Y-%m-%d", "%Y-%m", "%Y", "%d-%m-%Y", "%d/%m/%Y", "%m/%Y", "%m-%Y", "%b %Y", "%B %Y", "%b-%Y", "%B-%Y"]
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    # Try extracting 4 digit year
+    year_match = re.search(r'\b(19\d\d|20\d\d)\b', date_str)
+    if year_match:
+        try:
+            return datetime.strptime(year_match.group(1), "%Y").date()
+        except ValueError:
+            pass
+    return default
+
+
+def extract_text_from_pdf(file_obj):
+    text = ""
+    try:
+        with pdfplumber.open(file_obj) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+    except Exception as e:
+        print(f"PDF parsing error: {e}")
+    return text
+
+def extract_text_from_docx(file_obj):
+    text = ""
+    try:
+        doc = docx.Document(file_obj)
+        for para in doc.paragraphs:
+            text += para.text + "\n"
+    except Exception as e:
+        print(f"DOCX parsing error: {e}")
+    return text
+
+def parse_resume_text(text):
+    data = {
+        'name': '',
+        'email': '',
+        'phone': '',
+        'skills': [],
+        'summary': '',
+        'current_company': '',
+        'designation': '',
+        'current_ctc': None,
+        'expected_ctc': None,
+        'notice_period': 30,
+        'location': '',
+        'experience_years': 0.0,
+        'work_history': [],
+        'education_history': [],
+        'projects': [],
+        'certifications': []
+    }
+    
+    # Clean text
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    
+    # Extract Email
+    email_match = re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+    if email_match:
+        data['email'] = email_match.group(0)
+        
+    # Extract Phone
+    phone_match = re.search(r'(\+\d{1,3}[- ]?)?\d{10}', text)
+    if phone_match:
+        data['phone'] = phone_match.group(0)
+        
+    # Extract Name (heuristic: first line)
+    if lines:
+        data['name'] = lines[0]
+        
+    # Skills extraction (expanded list)
+    skill_keywords = [
+        'python', 'java', 'django', 'react', 'javascript', 'node', 'mern', 'aws', 'docker', 'kubernetes', 'sql', 
+        'pharma', 'nurse', 'sales', 'hr', 'php', 'laravel', 'flutter', 'android', 'ios', 'data science', 'ml', 'ai'
+    ]
+    text_lower = text.lower()
+    for skill in skill_keywords:
+        if re.search(r'\b' + re.escape(skill) + r'\b', text_lower):
+            data['skills'].append(skill)
+
+    # Heuristics for CTC
+    ctc_match = re.search(r'(Current CTC|CTC|Salary)[: ]+([\d.]+)', text, re.I)
+    if ctc_match:
+        try:
+            data['current_ctc'] = float(ctc_match.group(2)) * 100000 
+        except: pass
+
+    ectc_match = re.search(r'(Expected CTC|ECTC)[: ]+([\d.]+)', text, re.I)
+    if ectc_match:
+        try:
+            data['expected_ctc'] = float(ectc_match.group(2)) * 100000
+        except: pass
+
+    # Notice Period
+    np_match = re.search(r'(Notice Period|NP)[: ]+(\d+)', text, re.I)
+    if np_match:
+        try:
+            data['notice_period'] = int(np_match.group(2))
+        except: pass
+
+    # Experience Years
+    exp_match = re.search(r'(\d+)\+?\s*Years?', text, re.I)
+    if exp_match:
+        data['experience_years'] = float(exp_match.group(1))
+
+    # Location (expanded)
+    locations = ['Delhi', 'Mumbai', 'Bangalore', 'Hyderabad', 'Pune', 'Noida', 'Gurgaon', 'Patna', 'Lucknow', 'Begusarai', 'Samastipur']
+    for loc in locations:
+        if loc.lower() in text_lower:
+            data['location'] = loc
+            break
+            
+    # Very basic section detection for work, education, etc.
+    # We'll just take the next few lines for now as a mock implementation of deeper parsing
+    current_section = None
+    for line in lines:
+        l = line.lower()
+        if 'experience' in l or 'work history' in l:
+            current_section = 'WORK'
+            continue
+        if 'education' in l or 'academic' in l:
+            current_section = 'EDU'
+            continue
+        if 'project' in l:
+            current_section = 'PROJECT'
+            continue
+        if 'certification' in l:
+            current_section = 'CERT'
+            continue
+            
+        if current_section == 'WORK' and len(data['work_history']) < 3:
+            data['work_history'].append(line)
+        elif current_section == 'EDU' and len(data['education_history']) < 2:
+            data['education_history'].append(line)
+        elif current_section == 'PROJECT' and len(data['projects']) < 3:
+            data['projects'].append(line)
+        elif current_section == 'CERT' and len(data['certifications']) < 3:
+            data['certifications'].append(line)
+
+    data['summary'] = text[:500]
+    return data
+
+def _flatten_field(field_data):
+    if isinstance(field_data, dict) and "value" in field_data:
+        return field_data["value"]
+    return field_data
+
+
+def parse_education_date_to_date_obj(date_val):
+    if not date_val:
+        return None
+    date_str = str(date_val).strip()
+    if not date_str:
+        return None
+        
+    import re
+    from datetime import datetime
+    
+    # 1. Try common full/partial date formats via datetime.strptime
+    formats = [
+        "%Y-%m-%d", "%Y-%m", "%m/%Y", "%m-%Y", 
+        "%b %Y", "%B %Y", "%b-%Y", "%B-%Y", "%Y"
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+
+    # 2. Extract year (4 digits) and search for month name/number
+    year_match = re.search(r'\b(19\d\d|20\d\d)\b', date_str)
+    if not year_match:
+        return None
+    year = int(year_match.group(1))
+    
+    months = {
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
+        'january': 1, 'february': 2, 'march': 3, 'april': 4, 'june': 6,
+        'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12
+    }
+    
+    date_str_lower = date_str.lower()
+    found_month = None
+    for m_name, m_num in months.items():
+        if m_name in date_str_lower:
+            if not found_month or len(m_name) > len(found_month[0]):
+                found_month = (m_name, m_num)
+                
+    if found_month:
+        try:
+            return datetime(year, found_month[1], 1).date()
+        except Exception:
+            pass
+            
+    m1 = re.search(r'\b(0[1-9]|1[0-2]|[1-9])\s*[\-/]\s*(19\d\d|20\d\d)\b', date_str)
+    if m1:
+        try:
+            return datetime(int(m1.group(2)), int(m1.group(1)), 1).date()
+        except Exception:
+            pass
+            
+    m2 = re.search(r'\b(19\d\d|20\d\d)\s*[\-/]\s*(0[1-9]|1[0-2]|[1-9])\b', date_str)
+    if m2:
+        try:
+            return datetime(int(m2.group(1)), int(m2.group(2)), 1).date()
+        except Exception:
+            pass
+
+    try:
+        return datetime(year, 1, 1).date()
+    except Exception:
+        return None
+
+
+def parse_education_date_to_string(date_val) -> str:
+    date_obj = parse_education_date_to_date_obj(date_val)
+    if date_obj:
+        return date_obj.strftime("%Y-%m-%d")
+    return ""
+
+
+def normalize_skills(skills_list):
+    if not skills_list:
+        return []
+    normalized = []
+    seen = set()
+    normalization_map = {
+        'python': 'Python',
+        'django': 'Django',
+        'react': 'React',
+        'javascript': 'JavaScript',
+        'node': 'Node.js',
+        'node.js': 'Node.js',
+        'aws': 'AWS',
+        'docker': 'Docker',
+        'kubernetes': 'Kubernetes',
+        'sql': 'SQL',
+        'mysql': 'MySQL',
+        'postgresql': 'PostgreSQL',
+        'mongodb': 'MongoDB',
+        'html': 'HTML',
+        'css': 'CSS',
+        'git': 'Git',
+        'java': 'Java',
+        'php': 'PHP',
+        'typescript': 'TypeScript',
+        'c++': 'C++',
+        'c#': 'C#',
+        'ruby': 'Ruby',
+        'rails': 'Ruby on Rails',
+        'flutter': 'Flutter',
+        'android': 'Android',
+        'ios': 'iOS'
+    }
+    for s in skills_list:
+        if not s or not isinstance(s, str):
+            continue
+        s_clean = s.strip()
+        if not s_clean:
+            continue
+        s_lower = s_clean.lower()
+        normalized_name = normalization_map.get(s_lower, s_clean.title())
+        if normalized_name.lower() not in seen:
+            normalized.append(normalized_name)
+            seen.add(normalized_name.lower())
+    return normalized
+
+
+def parse_experience_years(text_val):
+    if not text_val:
+        return 0.0
+    text_val = str(text_val).lower().strip()
+    years = 0.0
+    months = 0.0
+    
+    years_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:yr|year|yrs|years)', text_val)
+    if years_match:
+        years = float(years_match.group(1))
+        
+    months_match = re.search(r'(\d+)\s*(?:month|months|mth|mths)', text_val)
+    if months_match:
+        months = float(months_match.group(1))
+        
+    if years > 0 or months > 0:
+        return round(years + (months / 12.0), 2)
+        
+    digit_match = re.search(r'^(\d+(?:\.\d+)?)$', text_val)
+    if digit_match:
+        return round(float(digit_match.group(1)), 2)
+        
+    return 0.0
+
+
+def convert_llm_data_to_standard_format(llm_data):
+    f = _flatten_field
+    
+    # 1. Experiences
+    experiences = []
+    work_exp = llm_data.get("work_experience", {})
+    if work_exp and isinstance(work_exp.get("value"), list):
+        for item in work_exp["value"]:
+            s_date = f(item.get("start_date"))
+            e_date = f(item.get("end_date"))
+            experiences.append({
+                "designation": (f(item.get("designation")) or "")[:100],
+                "company": (f(item.get("company")) or "")[:100],
+                "location": (f(item.get("location")) or "")[:100],
+                "duration": "",
+                "description": f(item.get("description")) or "",
+                "start_date": s_date or "",
+                "end_date": e_date or ""
+            })
+            
+    # Calculate duration and years of experience
+    from services.resume_intelligence import ResumeIntelligenceService
+    total_exp = 0.0
+    for exp in experiences:
+        s_date_str = ResumeIntelligenceService.normalize_date_to_string(exp["start_date"], is_end=False)
+        e_date_str = ResumeIntelligenceService.normalize_date_to_string(exp["end_date"], is_end=True)
+        if s_date_str:
+            exp["start_date"] = s_date_str
+            exp["end_date"] = e_date_str or "Present"
+            exp["duration"] = ResumeIntelligenceService.get_duration_display(s_date_str, e_date_str)
+            total_exp += ResumeIntelligenceService.calculate_experience_years_from_dates(s_date_str, e_date_str)
+    total_exp = round(total_exp, 1)
+
+    # 2. Educations
+    educations = []
+    education = llm_data.get("education", {})
+    if education and isinstance(education.get("value"), list):
+        for item in education["value"]:
+            s_year = f(item.get("start_year"))
+            e_year = f(item.get("end_year"))
+            
+            # If only one completion year exists, store it as end_date
+            if s_year and not e_year:
+                e_year = s_year
+                s_year = ""
+                
+            educations.append({
+                "degree": (f(item.get("degree")) or "")[:100],
+                "institution": (f(item.get("college")) or f(item.get("university")) or "")[:100],
+                "field_of_study": (f(item.get("branch")) or "General")[:100],
+                "score": (f(item.get("cgpa")) or f(item.get("percentage")) or "N/A")[:20],
+                "start_date": parse_education_date_to_string(s_year),
+                "end_date": parse_education_date_to_string(e_year)
+            })
+
+    # 3. Skills (normalized and merged)
+    tech_skills = f(llm_data.get("technical_skills")) or []
+    soft_skills = f(llm_data.get("soft_skills")) or []
+    skills = normalize_skills(tech_skills + soft_skills)
+
+    # 4. Projects
+    projects = []
+    projects_data = llm_data.get("projects", {})
+    if projects_data and isinstance(projects_data.get("value"), list):
+        for item in projects_data["value"]:
+            projects.append({
+                "title": (f(item.get("title")) or "")[:255],
+                "description": f(item.get("description")) or "",
+                "link": (f(item.get("link")) or "")[:255]
+            })
+
+    # 5. Certifications
+    certifications = []
+    cert_data = llm_data.get("certifications", {})
+    if cert_data and isinstance(cert_data.get("value"), list):
+        for item in cert_data["value"]:
+            certifications.append({
+                "name": (f(item.get("name")) or "")[:255],
+                "issuing_organization": (f(item.get("issuing_organization")) or "")[:255],
+                "issue_date": f(item.get("issue_date")) or ""
+            })
+
+    # 6. Personal Info
+    raw_phone = f(llm_data.get("phone")) or ""
+    phone_digits = re.sub(r'\D', '', raw_phone)
+    phone_clean = phone_digits[-10:] if len(phone_digits) >= 10 else phone_digits
+    if not phone_clean:
+        phone_match = re.search(r'(?:\+?\d{1,3}[- ]?)?(?:\d[- ]?){9}\d', raw_phone)
+        if phone_match:
+            phone_clean = re.sub(r'\D', '', phone_match.group(0))[-10:]
+
+    raw_email = f(llm_data.get("email")) or ""
+    email_clean = raw_email.strip()[:254]
+
+    raw_name = f(llm_data.get("full_name")) or f(llm_data.get("name")) or f(llm_data.get("candidate_name")) or "Unknown Candidate"
+    name_clean = raw_name.strip()[:255]
+
+    raw_linkedin = f(llm_data.get("linkedin")) or ""
+    linkedin_clean = raw_linkedin.strip()[:200]
+
+    raw_portfolio = f(llm_data.get("portfolio")) or ""
+    portfolio_clean = raw_portfolio.strip()[:200]
+
+    # Clean and parse CTCs, Notice Period, DOB, Gender
+    def clean_ctc(val):
+        if not val:
+            return None
+        val_str = str(val).lower()
+        matches = re.findall(r'[\d\.]+', val_str)
+        if not matches:
+            return None
+        num = float(matches[0])
+        if 'lpa' in val_str or 'lakh' in val_str or num < 100.0:
+            return num * 100000
+        return num
+
+    def clean_notice_period(val):
+        if not val:
+            return 30
+        val_str = str(val).lower()
+        matches = re.findall(r'\d+', val_str)
+        if not matches:
+            return 30
+        return int(matches[0])
+
+    current_ctc_val = clean_ctc(f(llm_data.get("current_ctc")))
+    expected_ctc_val = clean_ctc(f(llm_data.get("expected_ctc")))
+    notice_period_val = clean_notice_period(f(llm_data.get("notice_period")))
+    dob_val = f(llm_data.get("date_of_birth")) or f(llm_data.get("dob"))
+    gender_val = f(llm_data.get("gender"))
+
+    personal_info = {
+        "name": name_clean,
+        "email": email_clean,
+        "phone": phone_clean,
+        "location": (f(llm_data.get("address")) or f(llm_data.get("city")) or "Unknown")[:255],
+        "address": (f(llm_data.get("address")) or "")[:255],
+        "city": (f(llm_data.get("city")) or "")[:255],
+        "linkedin_url": linkedin_clean,
+        "portfolio_url": portfolio_clean,
+        "current_company": (experiences[0]["company"] if experiences else "")[:255],
+        "current_designation": (experiences[0]["designation"] if experiences else "Professional")[:255],
+        "total_experience": total_exp,
+        "current_ctc": current_ctc_val,
+        "expected_ctc": expected_ctc_val,
+        "notice_period": notice_period_val,
+        "date_of_birth": dob_val,
+        "gender": gender_val
+    }
+
+    return {
+        "personal_info": personal_info,
+        "summary": f(llm_data.get("professional_summary")) or "",
+        "skills": skills,
+        "education": educations,
+        "experience": experiences,
+        "projects": projects,
+        "certifications": certifications,
+        "achievements": f(llm_data.get("achievements")) or [],
+        "languages": f(llm_data.get("languages")) or [],
+        "current_ctc": current_ctc_val,
+        "expected_ctc": expected_ctc_val,
+        "notice_period": notice_period_val,
+        "date_of_birth": dob_val,
+        "gender": gender_val,
+        "metadata": {
+            "parsed_by": "OpenAIResumeParser",
+            "parsed_at": datetime.now().isoformat()
+        }
+    }
+
+from typing import List, Optional
+from pydantic import BaseModel, Field
+
+class FastExperienceItem(BaseModel):
+    company: Optional[str] = Field(None, description="Company name")
+    designation: Optional[str] = Field(None, description="Job designation / title")
+    location: Optional[str] = Field(None, description="Work location")
+    employment_type: Optional[str] = Field(None, description="Full-time, part-time, etc.")
+    start_date: Optional[str] = Field(None, description="Start date of employment")
+    end_date: Optional[str] = Field(None, description="End date or Present")
+    description: Optional[str] = Field(None, description="Key duties and accomplishments")
+
+class FastExperience(BaseModel):
+    value: List[FastExperienceItem] = Field(default_factory=list)
+
+class FastEducationItem(BaseModel):
+    degree: Optional[str] = Field(None, description="Name of degree")
+    branch: Optional[str] = Field(None, description="Branch of study")
+    college: Optional[str] = Field(None, description="College name")
+    board: Optional[str] = Field(None, description="Board name")
+    university: Optional[str] = Field(None, description="University name")
+    start_year: Optional[str] = Field(None, description="Start year")
+    end_year: Optional[str] = Field(None, description="End year")
+    cgpa: Optional[str] = Field(None, description="CGPA")
+    percentage: Optional[str] = Field(None, description="Percentage")
+    grade: Optional[str] = Field(None, description="Grade")
+
+class FastEducation(BaseModel):
+    value: List[FastEducationItem] = Field(default_factory=list)
+
+class FastProjectItem(BaseModel):
+    title: Optional[str] = Field(None, description="Project title")
+    description: Optional[str] = Field(None, description="Project description")
+    technologies: Optional[str] = Field(None, description="Technologies used")
+    duration: Optional[str] = Field(None, description="Duration")
+
+class FastProject(BaseModel):
+    value: List[FastProjectItem] = Field(default_factory=list)
+
+class FastCertificationItem(BaseModel):
+    name: Optional[str] = Field(None, description="Certification name")
+    issuing_organization: Optional[str] = Field(None, description="Issuing organization")
+    issue_date: Optional[str] = Field(None, description="Issue date")
+
+class FastCertification(BaseModel):
+    value: List[FastCertificationItem] = Field(default_factory=list)
+
+class FastResumeSchema(BaseModel):
+    candidate_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    linkedin: Optional[str] = None
+    github: Optional[str] = None
+    portfolio: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    current_designation: Optional[str] = None
+    current_company: Optional[str] = None
+    professional_summary: Optional[str] = None
+    work_experience: FastExperience = Field(default_factory=FastExperience)
+    education: FastEducation = Field(default_factory=FastEducation)
+    projects: FastProject = Field(default_factory=FastProject)
+    technical_skills: List[str] = Field(default_factory=list)
+    soft_skills: List[str] = Field(default_factory=list)
+    languages: List[str] = Field(default_factory=list)
+    certifications: FastCertification = Field(default_factory=FastCertification)
+    awards: List[str] = Field(default_factory=list)
+    achievements: List[str] = Field(default_factory=list)
+    training: List[str] = Field(default_factory=list)
+    interests: List[str] = Field(default_factory=list)
+    strengths: List[str] = Field(default_factory=list)
+    references: List[str] = Field(default_factory=list)
+    expected_ctc: Optional[str] = Field(None, description="Expected CTC / salary")
+    current_ctc: Optional[str] = Field(None, description="Current CTC / salary")
+    notice_period: Optional[str] = Field(None, description="Notice period in days or months")
+    date_of_birth: Optional[str] = Field(None, description="Date of birth")
+    gender: Optional[str] = Field(None, description="Gender")
+
+class OpenAIResumeParser:
+    @staticmethod
+    def parse(text: str) -> dict:
+        import os
+        import time
+        from openai import OpenAI
+        from django.conf import settings
+        
+        api_key = getattr(settings, "OPENAI_API_KEY", None) or os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OpenAI API Key is not configured.")
+        
+        model_name = getattr(settings, "OPENAI_MODEL_NAME", "gpt-4.1-mini")
+        client = OpenAI(api_key=api_key, timeout=45.0)
+        
+        system_content = (
+            "You are a professional resume parsing assistant.\n"
+            "Your critical objective is to extract 100% of the resume content without any summarization, omission, or simplification.\n"
+            "- Extract EVERY work experience, education item, project, skill, and certification listed, preserving their original order exactly.\n"
+            "- For work experience and projects descriptions (responsibilities): Do NOT merge separate bullet points, sentences, or responsibilities into one long paragraph.\n"
+            "- Do NOT summarize or condense responsibilities. Convert each responsibility or action item into its own separate line starting with a bullet point character '• '.\n"
+            "- If the resume already has bullets, keep them as separate lines. Each bullet item must be preserved with its exact wording.\n"
+            "- Never combine multiple distinct bullet points or achievements into a single sentence or line."
+        )
+        
+        t0 = time.time()
+        import concurrent.futures
+        def _do_openai_call():
+            return client.beta.chat.completions.parse(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": text}
+                ],
+                response_format=FastResumeSchema,
+                timeout=45.0
+            )
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(_do_openai_call)
+                completion = fut.result(timeout=45.0)
+        except concurrent.futures.TimeoutError:
+            import traceback
+            stack_info = "".join(traceback.format_stack())
+            logger.error(f"HANG DETECTED: OpenAI API parsing call timed out (> 45s).\nStack:\n{stack_info}")
+            print(f"HANG DETECTED: OpenAI API parsing call timed out (> 45s).\nStack:\n{stack_info}")
+            raise TimeoutError("OpenAI API call timed out after 45s.")
+
+        openai_duration = time.time() - t0
+        logger.info(f"[TIMING] OpenAI API call took: {openai_duration:.4f}s")
+        print(f"[TIMING] OpenAI API call took: {openai_duration:.4f}s")
+        
+        t_val = time.time()
+        llm_raw_data = completion.choices[0].message.parsed.model_dump()
+        result = convert_llm_data_to_standard_format(llm_raw_data)
+        validation_duration = time.time() - t_val
+        logger.info(f"[TIMING] JSON validation & conversion took: {validation_duration:.4f}s")
+        print(f"[TIMING] JSON validation & conversion took: {validation_duration:.4f}s")
+        
+        if hasattr(_thread_local_timings, "timings"):
+            _thread_local_timings.timings["openai"] = openai_duration
+            _thread_local_timings.timings["validation"] = validation_duration
+            
+        return result
+
+def copy_storage_file(source_field, target_path):
+    """
+    Copies a file within the same storage backend (local filesystem or S3)
+    to avoid re-uploading the same bytes over the network.
+    """
+    import os
+    import shutil
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    storage = source_field.storage
+    source_name = source_field.name
+    
+    # 1. Try S3 server-side copy if S3Storage is used
+    if hasattr(storage, 'bucket_name') and hasattr(storage, 'connection'):
+        try:
+            s3_client = storage.connection.meta.client
+            bucket_name = storage.bucket_name
+            copy_source = {'Bucket': bucket_name, 'Key': source_name}
+            s3_client.copy(copy_source, bucket_name, target_path)
+            logger.info(f"[S3 COPY SUCCESS] Copied {source_name} to {target_path} server-side.")
+            print(f"[S3 COPY SUCCESS] Copied {source_name} to {target_path} server-side.")
+            return True
+        except Exception as e:
+            logger.error(f"[S3 COPY ERROR] Failed S3 copy from {source_name} to {target_path}: {e}")
+            print(f"[S3 COPY ERROR] Failed S3 copy from {source_name} to {target_path}: {e}")
+
+    # 2. Try local filesystem copy
+    try:
+        source_path = storage.path(source_name)
+        target_abs_path = storage.path(target_path)
+        os.makedirs(os.path.dirname(target_abs_path), exist_ok=True)
+        shutil.copy2(source_path, target_abs_path)
+        logger.info(f"[LOCAL COPY SUCCESS] Copied {source_path} to {target_abs_path} locally.")
+        print(f"[LOCAL COPY SUCCESS] Copied {source_path} to {target_abs_path} locally.")
+        return True
+    except Exception as e:
+        logger.error(f"[LOCAL COPY ERROR] Failed local copy from {source_name} to {target_path}: {e}")
+        print(f"[LOCAL COPY ERROR] Failed local copy from {source_name} to {target_path}: {e}")
+
+    return False
+
+def process_resume_file(file_obj, filename, overwrite=False, merge=False, merge_candidate_id=None, progress_callback=None, security_data=None, user=None, uploaded_by=None):
+    import time
+    import uuid
+    import traceback
+    
+    t_process_start = time.time()
+    request_id = str(uuid.uuid4())[:8]
+    filename = sanitize_text(filename, "filename")
+
+    if user and not uploaded_by:
+        if getattr(user, 'role', '') != User.Role.CANDIDATE:
+            uploaded_by = user
+            user = None
+    
+    logger.info(f"[TIMING] [{request_id}] START Upload: {filename}")
+    print(f"[TIMING] [{request_id}] START Upload: {filename}")
+    
+    # Support PDF, DOCX, DOC, RTF, TXT, and Image formats
+    ext = filename.split('.')[-1].lower() if '.' in filename else ''
+    allowed_extensions = {'pdf', 'docx', 'doc', 'rtf', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'tiff'}
+    if ext not in allowed_extensions:
+        logger.error(f"[PARSER ERROR] [{request_id}] Invalid format uploaded: {filename} (ext: {ext}). Allowed: {allowed_extensions}")
+        print(f"[PARSER ERROR] [{request_id}] Invalid format uploaded: {filename} (ext: {ext}).")
+        return None, "INVALID_FORMAT"
+        
+    try:
+        t_upload_start = time.time()
+        if hasattr(file_obj, 'seek'):
+            file_obj.seek(0)
+        file_bytes = file_obj.read()
+        t_upload = time.time() - t_upload_start
+        logger.info(f"[PARSER START] [{request_id}] Uploaded resume: {filename}, size: {len(file_bytes)} bytes")
+        logger.info(f"[TIMING] [{request_id}] END Upload: {filename} (took {t_upload:.4f}s)")
+        print(f"[TIMING] [{request_id}] END Upload: {filename} (took {t_upload:.4f}s)")
+    except Exception as e:
+        tb = traceback.format_exc()
+        logger.error(f"[PARSER READ ERROR] [{request_id}] Step: Read File Bytes | File: {filename} | Type: {type(e).__name__} | Error: {str(e)}\n{tb}")
+        print(f"=== PARSER ERROR AT Read File Bytes ===")
+        print(f"File: {filename} | Request ID: {request_id} | Type: {type(e).__name__}: {str(e)}")
+        print(tb)
+        return None, "READ_ERROR"
+
+    # Enforce security validation if not already done
+    if security_data is None:
+        from utils.security import perform_all_security_validations
+        try:
+            security_data = perform_all_security_validations(file_bytes, filename)
+        except Exception as e:
+            tb = traceback.format_exc()
+            logger.error(f"[PARSER SECURITY REJECT] [{request_id}] Step: Security Validation | File: {filename} | Type: {type(e).__name__} | Error: {str(e)}\n{tb}")
+            print(f"=== PARSER ERROR AT Security Validation ===")
+            print(f"File: {filename} | Request ID: {request_id} | Type: {type(e).__name__}: {str(e)}")
+            print(tb)
+            return None, "SECURITY_FAILED"
+
+    if security_data and security_data.get("repaired_bytes"):
+        file_bytes = security_data["repaired_bytes"]
+        logger.info(f"[PARSER PDF REPAIRED] [{request_id}] Using repaired PDF bytes for {filename}. Warning: {security_data.get('repair_message')}")
+        print(f"[PARSER PDF REPAIRED] [{request_id}] Using repaired PDF bytes for {filename}. Warning: {security_data.get('repair_message')}")
+
+    from services.resume_intelligence import ResumeIntelligenceService
+    
+    sha256 = security_data.get('sha256') if security_data else hashlib.sha256(file_bytes).hexdigest()
+    existing_profile = CandidateProfile.objects.filter(sha256=sha256).first()
+    
+    cached_duplicate = False
+    t_ocr = 0.0
+    t_openai = 0.0
+    t_validation = 0.0
+    
+    if existing_profile and (existing_profile.raw_resume_text or existing_profile.parsed_json) and not overwrite:
+        logger.info(f"[PARSER DEDUPLICATION] [{request_id}] Reusing cached OCR & LLM parse for exact duplicate file: {filename}")
+        print(f"[PARSER DEDUPLICATION] [{request_id}] Reusing cached OCR & LLM parse for exact duplicate file: {filename}")
+        text = existing_profile.raw_resume_text or ""
+        parsed_data = existing_profile.parsed_json or {}
+        ocr_result = {
+            "text": text,
+            "engine": existing_profile.ocr_engine or "Cached DB",
+            "confidence": float(existing_profile.ocr_confidence or 100.0),
+            "resume_type": existing_profile.resume_type or "CACHED",
+            "largest_bold_name": existing_profile.full_name
+        }
+        cached_duplicate = True
+    
+    if not cached_duplicate:
+        from services.parseforge_service import (
+            ParseForgeService, ParseForgeException, ParseForgeAuthError,
+            ParseForgeUnavailableError, ParseForgeTimeoutError
+        )
+        
+        parsed_data = None
+        photo_bytes = None
+        photo_ext = None
+        text = ""
+        ocr_result = None
+
+        if ParseForgeService.is_configured():
+            logger.info(f"[PARSER START] [{request_id}] Primary engine: ParseForge for: {filename}")
+            if progress_callback:
+                progress_callback("reading_pdf")
+                progress_callback("extracting_text")
+                progress_callback("ai_parsing")
+            
+            t_pf_start = time.time()
+
+            def run_parseforge():
+                return ParseForgeService.parse_resume(file_bytes, filename)
+
+            def run_photo_extraction():
+                try:
+                    return extract_profile_photo(file_bytes, filename)
+                except Exception as e:
+                    logger.error(f"[PARSER PHOTO FAILURE] [{request_id}] Photo extraction failed: {str(e)}")
+                    return None, None
+
+            from django.db import connection
+            connection.close()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_pf = executor.submit(run_parseforge)
+                future_photo = executor.submit(run_photo_extraction)
+
+                try:
+                    pf_raw = future_pf.result(timeout=ParseForgeService.get_timeout())
+                    t_pf = time.time() - t_pf_start
+                    logger.info(f"[PARSER PARSEFORGE SUCCESS] [{request_id}] ParseForge completed in {t_pf:.2f}s for {filename}")
+
+                    parsed_data = ParseForgeService.map_response_to_talentvault(pf_raw)
+                    text = clean_extracted_text(pf_raw.get("raw_text") or pf_raw.get("normalized_text") or "")
+                    pf_conf = float(pf_raw.get("classification_confidence") or (pf_raw.get("quality", {}).get("ocr_confidence") if isinstance(pf_raw.get("quality"), dict) else 95.0) or 95.0)
+                    ocr_result = {
+                        "text": text,
+                        "engine": "ParseForge",
+                        "confidence": pf_conf,
+                        "resume_type": "PDF" if filename.lower().endswith('.pdf') else "DOC",
+                        "largest_bold_name": parsed_data.get("personal_info", {}).get("name")
+                    }
+                    t_ocr = t_pf * 0.3
+                    t_openai = t_pf * 0.7
+
+                    # Use photo extracted directly by ParseForge / Parseora
+                    if parsed_data.get('photo_bytes'):
+                        photo_bytes = parsed_data.pop('photo_bytes', None)
+                        photo_ext = parsed_data.pop('photo_ext', 'jpg')
+                        logger.info(f"[PARSER PHOTO SUCCESS] [{request_id}] Using profile photo extracted by ParseForge ({len(photo_bytes)} bytes)")
+                except ParseForgeAuthError as e:
+                    logger.error(f"[PARSEFORGE AUTH ERROR] [{request_id}] Status: {e.status_code} | Error: {str(e)}")
+                    parsed_data = None
+                except (ParseForgeUnavailableError, ParseForgeTimeoutError, ParseForgeException) as e:
+                    logger.error(f"[PARSEFORGE CALL ERROR] [{request_id}] Type: {type(e).__name__} | Status: {getattr(e, 'status_code', None)} | Req ID: {getattr(e, 'request_id', None)} | Error: {str(e)}")
+                    parsed_data = None
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    logger.error(f"[PARSEFORGE UNEXPECTED ERROR] [{request_id}] Error: {str(e)}\n{tb}")
+                    parsed_data = None
+
+                if photo_bytes is None:
+                    try:
+                        photo_bytes, photo_ext = future_photo.result(timeout=15.0)
+                    except Exception:
+                        photo_bytes, photo_ext = None, None
+
+        # Fallback to existing OCR / OpenAI / NLP pipeline if ParseForge did not produce parsed_data:
+        if parsed_data is None:
+            # 1. OCR Engine Execution / Text Extraction
+            t_ocr_start = time.time()
+            logger.info(f"[TIMING] [{request_id}] START OCR / Extract Text: {filename}")
+            print(f"[TIMING] [{request_id}] START OCR / Extract Text: {filename}")
+            try:
+                logger.info(f"[PARSER OCR RUNNING] [{request_id}] Running OCR/text extraction pipeline for: {filename}")
+                if progress_callback:
+                    progress_callback("reading_pdf")
+                    progress_callback("extracting_text")
+                
+                # Execute with 12s total OCR timeout guard
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(ResumeIntelligenceService.run_ocr_pipeline, file_bytes, filename)
+                    ocr_result = fut.result(timeout=12.0)
+                    
+                text = ocr_result["text"]
+                t_ocr = time.time() - t_ocr_start
+                logger.info(f"[PARSER OCR SUCCESS] [{request_id}] Engine: {ocr_result['engine']}, Confidence: {ocr_result['confidence']}%")
+                logger.info(f"[TIMING] [{request_id}] END OCR / Extract Text: {filename} (took {t_ocr:.4f}s)")
+                print(f"[TIMING] [{request_id}] END OCR / Extract Text: {filename} (took {t_ocr:.4f}s)")
+            except concurrent.futures.TimeoutError:
+                t_ocr = time.time() - t_ocr_start
+                logger.warning(f"[RESUME PARSER] OCR timeout for {filename}")
+                logger.info(f"[RESUME PARSER] Automatic parsing failed — manual parsing available for {filename}")
+                ocr_result = {"text": "", "engine": "Timeout Fallback", "confidence": 0.0, "resume_type": "UNKNOWN", "largest_bold_name": None}
+                text = ""
+            except Exception as e:
+                t_ocr = time.time() - t_ocr_start
+                tb = traceback.format_exc()
+                logger.error(f"[PARSER OCR FAILURE] [{request_id}] Step: Extract Text | File: {filename} | Type: {type(e).__name__} | Error: {str(e)}\n{tb}")
+                logger.info(f"[RESUME PARSER] Automatic parsing failed — manual parsing available for {filename}")
+                return None, "AUTOMATIC_PARSING_FAILED"
+            
+            # Check overall timing guard
+            if time.time() - t_process_start > 60.0:
+                stack_info = "".join(traceback.format_stack())
+                logger.warning(f"HANG DETECTED: [{request_id}] Parsing step duration warning > 60s for {filename}.\nStack:\n{stack_info}")
+                print(f"HANG DETECTED: [{request_id}] Parsing step duration warning > 60s for {filename}.")
+            
+            # 2. Run AI Parsing and profile photo extraction in parallel!
+            t_parallel_start = time.time()
+            logger.info(f"[TIMING] [{request_id}] START Gemini / AI Parsing: {filename}")
+            print(f"[TIMING] [{request_id}] START Gemini / AI Parsing: {filename}")
+            
+            openai_duration = 0.0
+            validation_duration = 0.0
+            
+            def run_openai_parser():
+                nonlocal openai_duration, validation_duration
+                try:
+                    logger.info(f"[PARSER LLM RUNNING] [{request_id}] Attempting AI parsing for: {filename}")
+                    if progress_callback:
+                        progress_callback("ai_parsing")
+                    clean_text = clean_extracted_text(text)
+                    _thread_local_timings.timings = {"openai": 0.0, "validation": 0.0}
+                    res = OpenAIResumeParser.parse(clean_text)
+                    openai_duration = _thread_local_timings.timings.get("openai", 0.0)
+                    validation_duration = _thread_local_timings.timings.get("validation", 0.0)
+                    return res
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    logger.error(f"[PARSER LLM FAILURE] [{request_id}] Step: AI Parsing | File: {filename} | Type: {type(e).__name__} | Error: {str(e)}\n{tb}")
+                    print(f"=== PARSER ERROR AT AI Parsing ===")
+                    print(f"File: {filename} | Request ID: {request_id} | Type: {type(e).__name__}: {str(e)}")
+                    print(tb)
+                    return None
+
+            def run_fallback_photo_extraction():
+                try:
+                    return extract_profile_photo(file_bytes, filename)
+                except Exception as e:
+                    logger.error(f"[PARSER PHOTO FAILURE] [{request_id}] Step: Photo Extraction | File: {filename} | Error: {str(e)}")
+                    return None, None
+
+            # Close stale DB connections prior to thread pool execution
+            from django.db import connection
+            connection.close()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_openai = executor.submit(run_openai_parser)
+                future_photo = executor.submit(run_fallback_photo_extraction)
+                
+                try:
+                    parsed_data = future_openai.result(timeout=45.0)
+                except concurrent.futures.TimeoutError:
+                    stack_info = "".join(traceback.format_stack())
+                    logger.error(f"HANG DETECTED: [{request_id}] Step: AI Parsing | File: {filename} | AI Parsing exceeded 45s timeout.\nStack:\n{stack_info}")
+                    print(f"HANG DETECTED: [{request_id}] Step: AI Parsing | File: {filename} | AI Parsing exceeded 45s timeout.")
+                    parsed_data = None
+                    
+                if photo_bytes is None:
+                    try:
+                        photo_bytes, photo_ext = future_photo.result(timeout=15.0)
+                    except concurrent.futures.TimeoutError:
+                        photo_bytes, photo_ext = None, None
+                
+            t_parallel = time.time() - t_parallel_start
+            logger.info(f"[TIMING] [{request_id}] END Gemini / AI Parsing: {filename} (took {t_parallel:.4f}s)")
+            print(f"[TIMING] [{request_id}] END Gemini / AI Parsing: {filename} (took {t_parallel:.4f}s)")
+            
+            t_openai = openai_duration
+            t_validation = validation_duration
+
+
+        if parsed_data is None:
+            try:
+                logger.info(f"[PARSER NLP RUNNING] [{request_id}] Extracting data via NLP fallback from text length: {len(text)}")
+                t_val_start = time.time()
+                parsed_data = ResumeIntelligenceService.parse_resume_nlp(text, parsed_name=ocr_result.get("largest_bold_name"))
+                t_validation += time.time() - t_val_start
+                logger.info(f"[PARSER NLP SUCCESS] [{request_id}] parse_resume_nlp completed")
+            except Exception as e:
+                tb = traceback.format_exc()
+                logger.error(f"[PARSER NLP FAILURE] [{request_id}] Step: NLP Fallback | File: {filename} | Type: {type(e).__name__} | Error: {str(e)}\n{tb}")
+                print(f"=== PARSER ERROR AT NLP Fallback ===")
+                print(f"File: {filename} | Request ID: {request_id} | Type: {type(e).__name__}: {str(e)}")
+                print(tb)
+
+        # ai_improve step (only if NLP succeeded; still guarded individually)
+        if parsed_data is not None:
+            try:
+                t_improve_start = time.time()
+                parsed_data = ResumeIntelligenceService.ai_improve_resume_data(parsed_data)
+                info = parsed_data['personal_info']
+                t_validation += time.time() - t_improve_start
+                logger.info(f"[TIMING] AI improve took: {time.time() - t_improve_start:.4f}s")
+            except Exception as e:
+                logger.error(f"[PARSER AI_IMPROVE FAILURE] ai_improve_resume_data raised: {str(e)}", exc_info=True)
+                info = parsed_data.get('personal_info', {})
+    else:
+        # If it was duplicate, we still need to run photo extraction
+        try:
+            photo_bytes, photo_ext = extract_profile_photo(file_bytes, filename)
+        except Exception as e:
+            logger.error(f"[PARSER PHOTO FAILURE] Photo extraction failed: {str(e)}", exc_info=True)
+            photo_bytes, photo_ext = None, None
+
+    # Fallback: build a minimal parsed_data from raw OCR text so upload still succeeds
+    if parsed_data is None:
+        logger.warning("[PARSER FALLBACK] Building minimal parsed_data from raw OCR text")
+        import re as _re
+        _email_m = _re.search(r'[\w\.\-]+@[\w\.\-]+\.\w+', text)
+        _phone_m = _re.search(r'(?:\+?\d{1,3}[- ]?)?(?:\d[- ]?){9}\d', text)
+        _email_fb = _email_m.group(0) if _email_m else ""
+        _phone_fb = _re.sub(r'[\s-]', '', _phone_m.group(0))[-10:] if _phone_m else ""
+        _name_fb = ocr_result.get("largest_bold_name") or ""
+        if not _name_fb:
+            for _ln in text.split('\n'):
+                _ln = _ln.strip()
+                if _ln and '@' not in _ln and not _re.search(r'\d{5,}', _ln) and len(_ln.split()) <= 5:
+                    _name_fb = _ln.title()
+                    break
+        parsed_data = {
+            "personal_info": {
+                "name": _name_fb,
+                "email": _email_fb,
+                "phone": _phone_fb,
+                "location": "",
+                "linkedin_url": "",
+                "portfolio_url": "",
+                "current_company": "",
+                "current_designation": "",
+                "total_experience": 0,
+            },
+            "summary": "",
+            "experience": [],
+            "education": [],
+            "skills": [],
+            "projects": [],
+            "certifications": [],
+            "achievements": [],
+            "languages": [],
+            "metadata": {"parsed_at": "", "word_count": len(text.split()), "fallback": True},
+        }
+        info = parsed_data['personal_info']
+        logger.warning(f"[PARSER FALLBACK] Minimal data built for name={_name_fb!r} email={_email_fb!r}")
+    
+    parsed_data = sanitize_recursive(parsed_data, "parsed_data")
+    text = sanitize_text(text, "raw_resume_text")
+    info = parsed_data.get('personal_info', {})
+    
+    email = info.get('email', '')
+    phone = info.get('phone', '')
+    
+    # Normalize placeholders
+    if email == "candidate@example.com":
+        email = ""
+    if phone == "9876543210":
+        phone = ""
+        
+    if not email:
+        email = f"unknown_{abs(hash(text or filename))}@example.com"
+
+    logger.info(f"[PARSER CONTACTS] Extracted Email: {email}, Extracted Phone: {phone}")
+    print(f"[PARSER CONTACTS] Extracted Email: {email}, Extracted Phone: {phone}")
+        
+    try:
+        from django.db import transaction
+        t_db_start = time.time()
+        with transaction.atomic():
+            if progress_callback:
+                progress_callback("saving_candidate")
+            # Check for duplicates (Exact: email, phone, LinkedIn URL, or sha256 hash)
+            t_user_start = time.time()
+            linkedin = info.get('linkedin_url', '') or info.get('linkedin', '')
+            sha256 = security_data.get('sha256', '') if security_data else ''
+            
+            existing_user = user
+            if not existing_user:
+                if email:
+                    existing_user = User.objects.filter(email=email).first()
+                if not existing_user and phone:
+                    existing_user = User.objects.filter(phone_number=phone).first()
+                if not existing_user and linkedin:
+                    existing_profile = CandidateProfile.objects.filter(linkedin_url=linkedin).first()
+                    if existing_profile:
+                        existing_user = existing_profile.user
+                if not existing_user and sha256:
+                    existing_profile = CandidateProfile.objects.filter(sha256=sha256).first()
+                    if existing_profile:
+                        existing_user = existing_profile.user
+            
+            if merge or merge_candidate_id:
+                target_profile = None
+                if merge_candidate_id:
+                    target_profile = CandidateProfile.objects.filter(id=merge_candidate_id).first()
+                elif existing_user:
+                    target_profile = getattr(existing_user, 'candidate_profile', None)
+                
+                if target_profile:
+                    merged_profile = merge_candidate_profile_data(
+                        existing_profile=target_profile,
+                        parsed_data=parsed_data,
+                        info=info,
+                        raw_resume_text=text,
+                        file_bytes=file_bytes,
+                        filename=filename,
+                        security_data=security_data,
+                        photo_bytes=photo_bytes,
+                        photo_ext=photo_ext,
+                        uploaded_by=uploaded_by or user
+                    )
+                    if progress_callback:
+                        progress_callback("completed", merged_profile)
+                    return merged_profile, "SUCCESS"
+
+            if existing_user and not overwrite and user is None:
+                DuplicateResumeLog.objects.create(
+                    email=email,
+                    phone=phone,
+                    filename=filename,
+                    action_taken='SKIPPED'
+                )
+                existing_profile = getattr(existing_user, 'candidate_profile', None)
+                return existing_profile, "DUPLICATE"
+                
+            if existing_user and overwrite:
+                user = existing_user
+                if phone: 
+                    user.phone_number = phone
+                user.save()
+                DuplicateResumeLog.objects.create(
+                    email=email,
+                    phone=phone,
+                    filename=filename,
+                    action_taken='UPDATED'
+                )
+                logger.info(f"[PARSER DUPLICATE] Candidate already exists (overwriting): {email}")
+                print(f"[PARSER DUPLICATE] Candidate already exists (overwriting): {email}")
+            else:
+                user, created_user = User.objects.get_or_create(
+                    email=email,
+                    defaults={'role': User.Role.CANDIDATE, 'phone_number': phone if phone else None}
+                )
+                if created_user:
+                    user.set_unusable_password()
+                    user.save()
+                logger.info(f"[PARSER DB USER] User record {'created' if created_user else 'retrieved'}: {user.email}")
+                print(f"[PARSER DB USER] User record {'created' if created_user else 'retrieved'}: {user.email}")
+            t_user = time.time() - t_user_start
+            logger.info(f"[TIMING] User DB lookup/create took: {t_user:.4f}s")
+                
+            t_profile_start = time.time()
+            profile, created_profile = CandidateProfile.objects.get_or_create(user=user)
+            
+            def get_priority_name():
+                def is_acceptable_name(name_str):
+                    if not name_str or not isinstance(name_str, str):
+                        return False
+                    name_str = name_str.strip()
+                    if not name_str:
+                        return False
+                    if name_str.lower() in ("unknown candidate", "unknown", "placeholder", "candidate", "null", "none"):
+                        return False
+                    
+                    name_clean = " ".join(name_str.strip().split())
+                    if not name_clean:
+                        return False
+                    if name_clean.isdigit():
+                        return False
+                    if NAME_CLEAN_RE.match(name_clean):
+                        return False
+                    if '@' in name_clean:
+                        return False
+                    if name_clean.lower().startswith('http'):
+                        return False
+                    if 'linkedin' in name_clean.lower() or 'github' in name_clean.lower():
+                        return False
+                        
+                    digits_only = DIGITS_ONLY_RE.sub('', name_clean)
+                    if len(digits_only) >= 8 and DIGITS_DIGIT_RE.match(digits_only.replace('+', '')):
+                        return False
+                        
+                    if EMAIL_RE.search(name_clean):
+                        return False
+                    if URL_RE.search(name_clean):
+                        return False
+                        
+                    if not any(char.isalpha() for char in name_clean):
+                        return False
+                        
+                    norm = STRIP_NON_ALPHA_RE.sub('', name_clean.lower()).strip()
+                    norm = " ".join(norm.split())
+                    
+                    SECTION_TITLES = {
+                        "objective", "summary", "professional summary", "profile", "education",
+                        "experience", "work experience", "projects", "technical skills", "skills",
+                        "certifications", "achievements", "awards", "languages", "personal details",
+                        "interests", "hobbies", "extracurricular activities", "volunteer work",
+                        "declaration", "references", "career objective", "academic qualification"
+                    }
+                    if norm in SECTION_TITLES:
+                        return False
+                        
+                    common_headings = {
+                        'curriculum vitae', 'curriculum', 'vitae', 'resume', 'cv', 'biodata', 'page', 'email', 'phone', 'contact', 'mobile'
+                    }
+                    if norm in common_headings:
+                        return False
+                        
+                    words = name_clean.lower().split()
+                    honorifics = {'mr', 'mrs', 'ms', 'dr', 'er', 'prof'}
+                    words_to_check = words[1:] if (words and words[0] in honorifics and len(words) > 1) else words
+                    
+                    blacklisted_words = {
+                        'manager', 'developer', 'executive', 'engineer', 'lead', 'associate', 'specialist', 'director', 
+                        'analyst', 'consultant', 'officer', 'administrator', 'coordinator', 'technician', 'representative', 
+                        'intern', 'programmer', 'architect', 'head', 'founder', 'co-founder', 'ceo', 'cto', 'supervisor',
+                        'leader', 'operator', 'agent', 'strategist', 'advisor', 'expert', 'auditor', 'salesperson',
+                        'ltd', 'limited', 'pvt', 'private', 'llp', 'llc', 'inc', 'company', 'corporation', 'technologies',
+                        'solutions', 'industries', 'group', 'corp', 'hospital', 'university', 'college', 'institute',
+                        'school', 'bank', 'unknown', 'hometown', 'residence', 'nationality', 'gender', 'about', 'hr',
+                        'recruiter', 'team', 'page', 'phone', 'email', 'address', 'contact', 'mobile', 'cv', 'resume',
+                        'biodata', 'curriculum', 'vitae'
+                    }
+                    if any(w in blacklisted_words for w in words_to_check):
+                        return False
+                        
+                    if ' ' not in name_clean and len(name_clean) > 12:
+                        return False
+                        
+                    if not (1 <= len(words) <= 6):
+                        return False
+                        
+                    return True
+
+                # 1. OpenAI Name
+                openai_name = None
+                for k in ["full_name", "name", "candidate_name"]:
+                    val = parsed_data.get(k)
+                    if isinstance(val, dict) and "value" in val:
+                        val = val["value"]
+                    if is_acceptable_name(val):
+                        openai_name = val.strip()
+                        break
+                
+                if not openai_name:
+                    personal = parsed_data.get("personal_info", {})
+                    if isinstance(personal, dict):
+                        for k in ["full_name", "name", "candidate_name"]:
+                            val = personal.get(k)
+                            if isinstance(val, dict) and "value" in val:
+                                val = val["value"]
+                            if is_acceptable_name(val):
+                                openai_name = val.strip()
+                                break
+                
+                logger.info(f"[NAME] OpenAI Name: {openai_name or 'None'}")
+                print(f"[NAME] OpenAI Name: {openai_name or 'None'}")
+                if openai_name:
+                    return openai_name
+
+                # 2. spaCy / NER Name
+                spacy_name = None
+                try:
+                    nlp = get_spacy_nlp()
+                    if nlp:
+                        page_1 = text.split('\x0c')[0] if '\x0c' in text else text
+                        lines = [line.strip() for line in page_1.split('\n') if line.strip()]
+                        search_text = "\n".join(lines[:15])
+                        doc = nlp(search_text)
+                        for ent in doc.ents:
+                            if ent.label_ == "PERSON":
+                                ent_text = " ".join(ent.text.strip().split())
+                                if is_acceptable_name(ent_text):
+                                    spacy_name = ent_text.title()
+                                    break
+                except Exception as e:
+                    logger.warning(f"spaCy PERSON extraction failed: {e}")
+                
+                logger.info(f"[NAME] spaCy Name: {spacy_name or 'None'}")
+                print(f"[NAME] spaCy Name: {spacy_name or 'None'}")
+                if spacy_name:
+                    return spacy_name
+
+                # 3. Resume Heading Name
+                heading_name = None
+                largest_heading = ocr_result.get("largest_bold_name")
+                if is_acceptable_name(largest_heading):
+                    heading_name = largest_heading.strip().title()
+                
+                logger.info(f"[NAME] Resume Heading: {heading_name or 'None'}")
+                print(f"[NAME] Resume Heading: {heading_name or 'None'}")
+                if heading_name:
+                    return heading_name
+
+                # 4. Largest Font OCR Name
+                largest_font_name = None
+                try:
+                    # Collect lines from page 1 data if available
+                    import fitz
+                    doc = fitz.open(stream=file_bytes, filetype="pdf")
+                    if len(doc) > 0:
+                        first_page = doc[0]
+                        blocks_dict = first_page.get_text("dict")
+                        spans_info = []
+                        for b in blocks_dict.get("blocks", []):
+                            if b.get("type") == 0:  # text block
+                                for line in b.get("lines", []):
+                                    spans = line.get("spans", [])
+                                    if spans:
+                                        line_text = "".join([s.get("text", "") for s in spans]).strip()
+                                        line_text = " ".join(line_text.split())
+                                        if line_text and is_acceptable_name(line_text):
+                                            max_size = max(s.get("size", 0.0) for s in spans)
+                                            spans_info.append((line_text, max_size))
+                        if spans_info:
+                            spans_info.sort(key=lambda x: x[1], reverse=True)
+                            largest_font_name = spans_info[0][0].strip().title()
+                except Exception as e:
+                    logger.warning(f"Largest font OCR extraction failed: {e}")
+                
+                logger.info(f"[NAME] Largest Font OCR Name: {largest_font_name or 'None'}")
+                print(f"[NAME] Largest Font OCR Name: {largest_font_name or 'None'}")
+                if largest_font_name:
+                    return largest_font_name
+
+                # 4.5 Regex & Honorifics Name Detection
+                regex_name = None
+                match_honorific = re.search(r'\b(?:Mr|Mrs|Ms|Dr|Er|Prof)\.?\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)+)', text)
+                if match_honorific:
+                    cand = match_honorific.group(0).strip().title()
+                    if is_acceptable_name(cand):
+                        regex_name = cand
+
+                if not regex_name:
+                    top_lines = [l.strip() for l in text.split('\n') if l.strip()][:5]
+                    for line in top_lines:
+                        clean_line = re.sub(r'^[•\-\*\+\s\.,●■#]+|[•\-\*\+\s\.,●■#]+$', '', line).strip()
+                        if is_acceptable_name(clean_line):
+                            regex_name = clean_line.title()
+                            break
+
+                logger.info(f"[NAME] Regex / Honorifics Name: {regex_name or 'None'}")
+                print(f"[NAME] Regex / Honorifics Name: {regex_name or 'None'}")
+                if regex_name:
+                    return regex_name
+
+                # 5. Email Fallback
+                email_name = None
+                if email and '@' in email:
+                    username = email.split('@')[0]
+                    if username:
+                        username_no_digits = re.sub(r'\d+', '', username)
+                        
+                        lowered = username_no_digits.lower()
+                        prefix_removed = username_no_digits
+                        for pfx in ['mr', 'ms', 'dr', 'hr']:
+                            if lowered.startswith(pfx):
+                                rem = username_no_digits[len(pfx):]
+                                if rem and rem[0] in '._-':
+                                    prefix_removed = rem[1:]
+                                    break
+                                elif pfx == 'hr' and len(rem) >= 3:
+                                    prefix_removed = rem
+                                    break
+                                elif pfx in ('mr', 'ms', 'dr') and len(rem) >= 4:
+                                    prefix_removed = rem
+                                    break
+                                    
+                        lowered_prefix_removed = prefix_removed.lower()
+                        if lowered_prefix_removed not in ("unknown", "candidate", "admin", "recruit", "hr", "jobs", "careers", "info", "support", "contact", "office", "staff", "hello", "team", "sales", "marketing", "work", "example") and not lowered_prefix_removed.startswith("unknown_"):
+                            parts = re.split(r'[\._\-]', prefix_removed)
+                            segmented_parts = []
+                            segments = {
+                                "raj", "kumar", "azeez", "basha", "sunny", "singh", "sharma", "verma", "gupta", "bose", "das", "roy", "sen", "amit", "rahul", "priya", "neha", "pooja"
+                            }
+                            for p in parts:
+                                p_lower = p.lower()
+                                split_done = False
+                                for i in range(3, len(p_lower) - 2):
+                                    part1 = p_lower[:i]
+                                    part2 = p_lower[i:]
+                                    if part1 in segments or part2 in segments:
+                                        segmented_parts.append(part1)
+                                        segmented_parts.append(part2)
+                                        split_done = True
+                                        break
+                                if not split_done:
+                                    segmented_parts.append(p)
+                                    
+                            email_name_raw = " ".join(segmented_parts).strip().title()
+                            if is_acceptable_name(email_name_raw):
+                                email_name = email_name_raw
+
+                logger.info(f"[NAME] Email Fallback: {email_name or 'None'}")
+                print(f"[NAME] Email Fallback: {email_name or 'None'}")
+                if email_name:
+                    return email_name
+
+                # 6. Filename Fallback
+                filename_name = None
+                if filename:
+                    base_fname = os.path.splitext(os.path.basename(filename))[0]
+                    clean_fname = re.sub(r'[\._\-]+', ' ', base_fname)
+                    non_name_words = {
+                        'resume', 'cv', 'profile', 'bio', 'updated', 'final', 'latest', 'draft',
+                        'document', 'scanned', 'only', 'test', 'sample', 'dummy', 'file', 'temp',
+                        'image', 'scan', 'copy', 'new', 'doc', 'pdf', 'docx', 'secure'
+                    }
+                    parts = [w for w in clean_fname.split() if w.isalpha() and len(w) >= 2 and w.lower() not in non_name_words]
+                    if len(parts) >= 1:
+                        fname_cand = " ".join(parts).title()
+                        if is_acceptable_name(fname_cand):
+                            filename_name = fname_cand
+
+                logger.info(f"[NAME] Filename Fallback: {filename_name or 'None'}")
+                print(f"[NAME] Filename Fallback: {filename_name or 'None'}")
+                if filename_name:
+                    return filename_name
+
+                return "Unknown Candidate"
+
+            candidate_name = get_priority_name()[:255]
+            profile.full_name = candidate_name
+            if isinstance(info, dict):
+                info['name'] = candidate_name
+            profile.summary = parsed_data.get('summary', '')
+            profile.location = (info.get('location') or "Unknown")[:100]
+            # Parse salary safely
+            curr_sal = parsed_data.get('current_ctc')
+            if curr_sal is not None and str(curr_sal).strip() not in ("", "None", "null"):
+                try:
+                    profile.current_salary = Decimal(str(curr_sal))
+                except Exception:
+                    profile.current_salary = None
+            else:
+                profile.current_salary = None
+
+            exp_sal = parsed_data.get('expected_ctc')
+            if exp_sal is not None and str(exp_sal).strip() not in ("", "None", "null"):
+                try:
+                    profile.expected_salary = Decimal(str(exp_sal))
+                except Exception:
+                    profile.expected_salary = None
+            else:
+                profile.expected_salary = None
+
+            profile.notice_period = parsed_data.get('notice_period', 30)
+            
+            total_exp_val = info.get('total_experience', 0.0)
+            if total_exp_val is not None and str(total_exp_val).strip() not in ("", "None", "null"):
+                try:
+                    profile.total_experience = Decimal(str(total_exp_val))
+                except Exception:
+                    profile.total_experience = Decimal("0.0")
+            else:
+                profile.total_experience = Decimal("0.0")
+            
+            profile.current_company = (info.get('current_company') or "")[:255]
+            profile.current_designation = (info.get('current_designation') or "Professional")[:255]
+            profile.linkedin_url = (info.get('linkedin_url') or "")[:200] or None
+            profile.portfolio_url = (info.get('portfolio_url') or "")[:200] or None
+
+            profile.parsed_json = parsed_data
+            profile.ocr_engine = ocr_result.get("engine", "None")
+            profile.ocr_confidence = Decimal(str(ocr_result.get("confidence", 0.0)))
+            profile.resume_type = ocr_result.get("resume_type", "UNKNOWN")
+            
+            profile.raw_resume_text = text
+            profile.original_experience_json = parsed_data.get('experience', [])
+            profile.original_skills = parsed_data.get('skills', [])
+            profile.original_summary = parsed_data.get('summary', '')
+            
+            v1_data = {
+                "version": 1,
+                "label": "Original Resume",
+                "data": parsed_data,
+                "created_at": datetime.now().isoformat(),
+                "created_by": "System OCR Parser"
+            }
+            profile.resume_versions = {"1": v1_data}
+            profile.current_version = 1
+            profile.audit_logs = [{
+                "action": "Parsed original resume using " + ocr_result.get("engine", "None"),
+                "timestamp": datetime.now().isoformat(),
+                "user": "System"
+            }]
+            
+            if security_data:
+                profile.original_filename = (security_data.get("sanitized_filename", filename) or "")[:255]
+                profile.secure_filename = (security_data.get("secure_filename") or "")[:255]
+                profile.sha256 = security_data.get("sha256")
+                profile.mime_type = (security_data.get("mime_type") or "")[:100]
+                profile.scan_status = security_data.get("scan_status", "PASSED")
+                profile.scan_timestamp = security_data.get("scan_timestamp")
+                profile.parser_status = "SUCCESS"
+                profile.preview_status = "READY"
+            else:
+                profile.original_filename = (filename or "")[:255]
+                profile.secure_filename = (filename or "")[:255]
+                profile.parser_status = "SUCCESS"
+                profile.preview_status = "READY"
+
+            try:
+                from services.resume_storage_service import upload_and_verify_resume, copy_and_verify_original_resume
+                save_filename = security_data.get("secure_filename") if (security_data and security_data.get("secure_filename")) else filename
+                saved_key, _ = upload_and_verify_resume(file_bytes, save_filename)
+                profile.resume.name = saved_key
+                
+                original_key = copy_and_verify_original_resume(saved_key, save_filename)
+                if original_key:
+                    profile.original_file.name = original_key
+                
+                logger.info(f"[PARSER FILE SAVE SUCCESS] Verified S3 object: {saved_key}")
+                print(f"[PARSER FILE SAVE SUCCESS] Verified S3 object: {saved_key}")
+                
+                if photo_bytes is None:
+                    logger.info("[PHOTO] No valid candidate portrait found.")
+                    print("[PHOTO] No valid candidate portrait found.")
+                    profile.profile_photo = None
+                else:
+                    profile.profile_photo.save(f"photo_{profile.id}.{photo_ext}", ContentFile(photo_bytes), save=False)
+                    logger.info(f"[PARSER PHOTO SAVE SUCCESS] Extracted and saved profile photo for {profile.full_name}")
+                    print(f"[PARSER PHOTO SAVE SUCCESS] Extracted and saved profile photo for {profile.full_name}")
+            except Exception as e:
+                logger.error(f"[PARSER FILE SAVE ERROR] Error saving resume file to S3: {str(e)}", exc_info=True)
+                print(f"[PARSER FILE SAVE ERROR] Error saving resume file to S3: {str(e)}")
+                return None, "SAVE_FAILED"
+            
+            if uploaded_by:
+                profile.uploaded_by = uploaded_by
+                if not profile.created_by:
+                    profile.created_by = uploaded_by
+            
+            profile.save()
+            t_profile = time.time() - t_profile_start
+            logger.info(f"[TIMING] Profile DB save took: {t_profile:.4f}s")
+            print(f"[TIMING] Profile DB save took: {t_profile:.4f}s")
+            
+            # Skills save
+            t_skills_start = time.time()
+            profile.skills.all().delete()
+            raw_skills = set(skill.strip().title()[:100] for skill in parsed_data.get('skills', []) if isinstance(skill, str) and skill.strip())
+            if raw_skills:
+                CandidateSkill.objects.bulk_create([CandidateSkill(profile=profile, skill_name=s) for s in raw_skills], ignore_conflicts=True)
+            t_skills = time.time() - t_skills_start
+            logger.info(f"[TIMING] Skills DB save took: {t_skills:.4f}s")
+                
+            # Experience save
+            t_exp_start = time.time()
+            profile.experiences.all().delete()
+            exp_objs = []
+            for exp in parsed_data.get('experience', []):
+                description_html = ResumeIntelligenceService.parse_experience_description_to_html(exp.get('description', ''))
+                exp_objs.append(Experience(
+                    profile=profile,
+                    company_name=(exp.get('company') or '')[:100],
+                    designation=(exp.get('designation') or '')[:100],
+                    description=description_html,
+                    start_date=parse_date_robust(exp.get('start_date'), None),
+                    end_date=parse_date_robust(exp.get('end_date'), None)
+                ))
+            if exp_objs:
+                Experience.objects.bulk_create(exp_objs)
+            t_exp = time.time() - t_exp_start
+            logger.info(f"[TIMING] Experience DB save took: {t_exp:.4f}s")
+                
+            # Education save
+            t_edu_start = time.time()
+            profile.educations.all().delete()
+            edu_objs = []
+            for edu in parsed_data.get('education', []):
+                edu_objs.append(Education(
+                    profile=profile,
+                    institution=(edu.get('institution') or '')[:100],
+                    degree=(edu.get('degree') or '')[:100],
+                    field_of_study=(edu.get('field_of_study') or '')[:100],
+                    percentage_or_cgpa=str(edu.get('score') or '')[:20],
+                    start_date=parse_date_robust(edu.get('start_date'), None),
+                    end_date=parse_date_robust(edu.get('end_date'), None)
+                ))
+            if edu_objs:
+                Education.objects.bulk_create(edu_objs)
+            t_edu = time.time() - t_edu_start
+            logger.info(f"[TIMING] Education DB save took: {t_edu:.4f}s")
+                
+            # Projects save
+            t_proj_start = time.time()
+            profile.projects.all().delete()
+            proj_objs = []
+            for proj in parsed_data.get('projects', []):
+                proj_objs.append(Project(
+                    profile=profile,
+                    title=(proj.get('title') or '')[:255],
+                    description=ResumeIntelligenceService.parse_experience_description_to_html(proj.get('description', '')),
+                    link=proj.get('link', '')
+                ))
+            if proj_objs:
+                Project.objects.bulk_create(proj_objs)
+            t_proj = time.time() - t_proj_start
+            logger.info(f"[TIMING] Projects DB save took: {t_proj:.4f}s")
+                
+            # Certifications save
+            t_cert_start = time.time()
+            profile.certifications.all().delete()
+            cert_objs = []
+            for cert in parsed_data.get('certifications', []):
+                cert_objs.append(Certification(
+                    profile=profile,
+                    name=(cert.get('name') or '')[:255],
+                    issuing_organization=(cert.get('issuing_organization') or '')[:255],
+                    issue_date=parse_date_robust(cert.get('issue_date'), None)
+                ))
+            if cert_objs:
+                Certification.objects.bulk_create(cert_objs)
+            t_cert = time.time() - t_cert_start
+            logger.info(f"[TIMING] Certifications DB save took: {t_cert:.4f}s")
+                
+            # Dynamic Universal Tagging & Indexing
+            try:
+                from services.candidate_tagging_service import CandidateTaggingService
+                CandidateTaggingService.tag_candidate_profile(profile, source='resume_parser')
+            except Exception as e:
+                logger.error(f"[TAGGING ERROR] Failed to tag candidate {profile.id}: {e}", exc_info=True)
+
+            # Calculate and save ATS suitability score
+            t_ats_start = time.time()
+            logger.info(f"[TIMING] [{request_id}] START ATS: {filename}")
+            print(f"[TIMING] [{request_id}] START ATS: {filename}")
+            try:
+                from services.candidate_matching_service import CandidateMatchingService
+                CandidateMatchingService.update_ats_scores(candidate_id=profile.id)
+                if progress_callback:
+                    progress_callback("ats_score_generated")
+            except Exception as e:
+                tb = traceback.format_exc()
+                logger.error(f"[PARSER ATS ERROR] [{request_id}] Step: ATS Scoring | File: {filename} | Type: {type(e).__name__} | Error: {str(e)}\n{tb}")
+                print(f"=== PARSER ERROR AT ATS Scoring ===")
+                print(f"File: {filename} | Request ID: {request_id} | Type: {type(e).__name__}: {str(e)}")
+                print(tb)
+            t_ats = time.time() - t_ats_start
+            logger.info(f"[TIMING] [{request_id}] END ATS: {filename} (took {t_ats:.4f}s)")
+            print(f"[TIMING] [{request_id}] END ATS: {filename} (took {t_ats:.4f}s)")
+            
+            # Dynamic PDF generation: Skipped entirely during upload parsing!
+            logger.info("[TIMING] ReportLab PDF generation skipped during parsing upload.")
+            print("[TIMING] ReportLab PDF generation skipped during parsing upload.")
+
+            t_db = time.time() - t_db_start
+            logger.info(f"[TIMING] [{request_id}] END Save Candidate: {filename} (took {t_db:.4f}s)")
+            print(f"[TIMING] [{request_id}] END Save Candidate: {filename} (took {t_db:.4f}s)")
+
+            logger.info(f"[PARSER COMPLETED] [{request_id}] Candidate Profile created/updated successfully: {profile.id}")
+            print(f"[PARSER COMPLETED] [{request_id}] Candidate Profile created successfully: ID={profile.id}, Name={profile.full_name}")
+            
+            t_total = time.time() - t_process_start
+            logger.info(f"[TIMING] [{request_id}] END Parser: {filename} (TOTAL took {t_total:.4f}s)")
+            print(f"[TIMING] [{request_id}] END Parser: {filename} (TOTAL took {t_total:.4f}s)")
+            
+            # Print exact timing stages as requested
+            print(f"OCR: {t_ocr:.2f}s")
+            print(f"OpenAI: {t_openai:.2f}s")
+            print(f"Validation: {t_validation:.2f}s")
+            print(f"Database: {t_db:.2f}s")
+            print(f"Total: {t_total:.2f}s")
+            
+            if progress_callback:
+                progress_callback("completed", profile)
+                
+            return profile, "SUCCESS"
+            
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"[PARSER DATABASE SAVE FAILURE] Failed saving candidate database records for {filename}: {str(e)}\n{tb}", exc_info=True)
+        print(f"[PARSER DATABASE SAVE FAILURE] Exception Traceback in process_resume_file:\n{tb}")
+        return None, "SAVE_FAILED"
+
+def handle_resume_upload(uploaded_file, overwrite=False, merge=False, merge_candidate_id=None, progress_callback=None, user=None, uploaded_by=None):
+    from utils.security import perform_all_security_validations, log_upload_attempt, SecurityValidationError
+    
+    if user and not uploaded_by:
+        if getattr(user, 'role', '') != User.Role.CANDIDATE:
+            uploaded_by = user
+            user = None
+
+    results = {'created': [], 'duplicates': 0, 'duplicate_profiles': [], 'errors': 0, 'error_reasons': []}
+    
+    try:
+        if hasattr(uploaded_file, 'seek'):
+            uploaded_file.seek(0)
+        file_bytes = uploaded_file.read()
+    except Exception as e:
+        log_upload_attempt(uploaded_file.name, None, uploaded_by or user, "ERROR", "ERROR", f"Read error: {str(e)}")
+        raise ValueError("Error reading file bytes.")
+
+    sha256 = hashlib.sha256(file_bytes).hexdigest()
+
+    try:
+        # Perform all security validations
+        security_data = perform_all_security_validations(file_bytes, uploaded_file.name)
+        # Log successful upload scan
+        log_upload_attempt(uploaded_file.name, sha256, uploaded_by or user, "CLEAN", "CLEAN")
+    except SecurityValidationError as e:
+        # Log rejected attempt
+        log_upload_attempt(uploaded_file.name, sha256, uploaded_by or user, "INFECTED" if "Virus" in str(e) else "CLEAN", "INFECTED" if "Malware" in str(e) else "CLEAN", str(e))
+        raise ValueError(str(e))
+    except Exception as e:
+        log_upload_attempt(uploaded_file.name, sha256, uploaded_by or user, "ERROR", "ERROR", str(e))
+        raise ValueError(str(e))
+
+    ext = uploaded_file.name.split('.')[-1].lower() if '.' in uploaded_file.name else ''
+
+    reason_map = {
+        "INVALID_FORMAT": "Invalid file format. Supported: PDF, DOC, DOCX, RTF, TXT.",
+        "READ_ERROR": "Error reading file bytes.",
+        "OCR_FAILED": "Resume could not be parsed automatically. Please use Manual Parsing to enter the candidate details.",
+        "AUTOMATIC_PARSING_FAILED": "Resume could not be parsed automatically. Please use Manual Parsing to enter the candidate details.",
+        "NLP_FAILED": "Resume could not be parsed automatically. Please use Manual Parsing to enter the candidate details.",
+        "SAVE_FAILED": "Database save failed.",
+        "SECURITY_FAILED": "Security validation failed."
+    }
+
+    if ext == 'zip':
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes), 'r') as z:
+                for filename in z.namelist():
+                    # Directories or nested zip files are not processed directly
+                    if filename.endswith('/') or filename.lower().endswith('.zip'):
+                        continue
+                    
+                    sub_ext = filename.split('.')[-1].lower() if '.' in filename else ''
+                    if sub_ext not in ['pdf', 'doc', 'docx', 'rtf', 'txt']:
+                        continue
+                        
+                    with z.open(filename) as f:
+                        sub_bytes = f.read()
+                        sub_sha = hashlib.sha256(sub_bytes).hexdigest()
+                        
+                        from utils.security import sanitize_filename, generate_secure_filename, get_mime_type
+                        sub_security_data = {
+                            "sanitized_filename": sanitize_filename(filename),
+                            "secure_filename": generate_secure_filename(filename),
+                            "sha256": sub_sha,
+                            "mime_type": get_mime_type(sub_bytes, filename, sub_ext),
+                            "scan_status": "PASSED",
+                            "scan_timestamp": timezone.now()
+                        }
+                        
+                        file_obj = io.BytesIO(sub_bytes)
+                        profile, status = process_resume_file(
+                            file_obj, filename, overwrite=overwrite, merge=merge, merge_candidate_id=merge_candidate_id, progress_callback=progress_callback, security_data=sub_security_data, user=user, uploaded_by=uploaded_by
+                        )
+                        
+                        if status == "SUCCESS":
+                            results['created'].append(profile)
+                        elif status == "DUPLICATE":
+                            results['duplicates'] += 1
+                            if profile:
+                                results['duplicate_profiles'].append(profile)
+                        else:
+                            results['errors'] += 1
+                            err_reason = reason_map.get(status, f"Unknown parsing error ({status})")
+                            results['error_reasons'].append(f"{filename}: {err_reason}")
+        except Exception as e:
+            raise ValueError(f"ZIP processing error: {str(e)}")
+    else:
+        file_obj = io.BytesIO(file_bytes)
+        profile, status = process_resume_file(
+            file_obj, uploaded_file.name, overwrite=overwrite, merge=merge, merge_candidate_id=merge_candidate_id, progress_callback=progress_callback, security_data=security_data, user=user, uploaded_by=uploaded_by
+        )
+        if status == "SUCCESS":
+            results['created'].append(profile)
+        elif status == "DUPLICATE":
+            results['duplicates'] += 1
+            if profile:
+                results['duplicate_profiles'].append(profile)
+        else:
+            results['errors'] += 1
+            err_reason = reason_map.get(status, f"Unknown parsing error ({status})")
+            results['error_reasons'].append(err_reason)
+            
+    return results
+
+def select_best_profile_photo(images_list):
+    """
+    Refactored profile photo selector.
+    Returns: (photo_bytes, ext) if a valid candidate portrait is found, else (None, None).
+    """
+    if not images_list:
+        logger.info("[PHOTO] No valid candidate portrait found.")
+        return None, None
+
+    import cv2
+    import numpy as np
+    import os
+    import re
+
+    # Load Haar cascades safely
+    try:
+        data_path = getattr(cv2, 'data', None)
+        haarcascades = getattr(data_path, 'haarcascades', '') if data_path else ''
+        face_cascade_path = os.path.join(haarcascades, 'haarcascade_frontalface_default.xml') if haarcascades else ''
+        profile_cascade_path = os.path.join(haarcascades, 'haarcascade_profileface.xml') if haarcascades else ''
+        
+        face_cascade = cv2.CascadeClassifier(face_cascade_path) if hasattr(cv2, 'CascadeClassifier') and face_cascade_path else None
+        profile_cascade = cv2.CascadeClassifier(profile_cascade_path) if hasattr(cv2, 'CascadeClassifier') and profile_cascade_path else None
+        use_face_detection = bool(face_cascade and not face_cascade.empty())
+    except Exception:
+        face_cascade = None
+        profile_cascade = None
+        use_face_detection = False
+
+    valid_candidates = []
+
+    for idx, (img_bytes, ext) in enumerate(images_list, 1):
+        try:
+            logger.info(f"[PHOTO] Image #{idx}")
+            
+            # Decode image
+            np_arr = np.frombuffer(img_bytes, np.uint8)
+            img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            if img is None:
+                logger.info("Width: 0\nHeight: 0\nFaces: 0\nOCR Text Ratio: 0.0\nDecision: Rejected (could not decode)")
+                continue
+
+            height, width = img.shape[:2]
+            logger.info(f"Width: {width}")
+            logger.info(f"Height: {height}")
+            
+            # Rule 1: Reject immediately if width < 120 or height < 120
+            if width < 120 or height < 120:
+                logger.info("Faces: 0\nOCR Text Ratio: 0.0\nDecision: rejected (too small)")
+                continue
+
+            # Aspect Ratio
+            aspect_ratio = width / height
+            
+            # Rule 2: Reject landscape screenshots/wide banners/very tall narrow slices
+            if aspect_ratio < 0.5 or aspect_ratio > 1.25:
+                logger.info("Faces: 0\nOCR Text Ratio: 0.0\nDecision: rejected (invalid aspect ratio)")
+                continue
+
+            # Convert to gray
+            if len(img.shape) == 2:
+                gray = img
+            else:
+                if img.shape[2] == 4:
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                    gray = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Rule 3: Mostly white document check
+            white_pixels = np.sum(gray > 240)
+            white_ratio = white_pixels / gray.size
+            if white_ratio > 0.85:
+                logger.info("Faces: 0\nOCR Text Ratio: 0.0\nDecision: rejected (mostly white document)")
+                continue
+
+            # Detect faces
+            num_faces = 0
+            faces = []
+            if use_face_detection:
+                frontal_faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+                profile_faces = profile_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+                
+                faces = list(frontal_faces)
+                for pf in profile_faces:
+                    px, py, pw, ph = pf
+                    overlap = False
+                    for ff in frontal_faces:
+                        fx, fy, fw, fh = ff
+                        if abs((px + pw/2) - (fx + fw/2)) < fw/2 and abs((py + ph/2) - (fy + fh/2)) < fh/2:
+                            overlap = True
+                            break
+                    if not overlap:
+                        faces.append(pf)
+                num_faces = len(faces)
+
+                if num_faces == 0:
+                    soft_faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=2, minSize=(25, 25))
+                    if len(soft_faces) == 1:
+                        faces = list(soft_faces)
+                        num_faces = 1
+
+            # Skin tone detection in YCrCb color space
+            ycrcb = cv2.cvtColor(img if len(img.shape) == 3 and img.shape[2] == 3 else cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR), cv2.COLOR_BGR2YCrCb)
+            skin_mask = cv2.inRange(ycrcb, np.array([40, 133, 77]), np.array([240, 173, 127]))
+            skin_pixels = cv2.countNonZero(skin_mask)
+            skin_ratio = skin_pixels / float(width * height)
+
+            # Rule 4: Reject if no face detected and not a valid skin-tone portrait
+            if num_faces == 0:
+                std_b = float(np.std(img[:, :, 0])) if len(img.shape) == 3 and img.shape[2] >= 3 else float(np.std(img))
+                std_g = float(np.std(img[:, :, 1])) if len(img.shape) == 3 and img.shape[2] >= 3 else float(np.std(img))
+                std_r = float(np.std(img[:, :, 2])) if len(img.shape) == 3 and img.shape[2] >= 3 else float(np.std(img))
+                avg_std = (std_b + std_g + std_r) / 3.0
+
+                if 0.08 <= skin_ratio <= 0.75 and 0.60 <= aspect_ratio <= 1.35 and width >= 100 and height >= 100 and avg_std > 18.0:
+                    faces = [(int(width * 0.15), int(height * 0.1), int(width * 0.7), int(height * 0.7))]
+                    num_faces = 1
+                else:
+                    logger.info("OCR Text Ratio: 0.0\nDecision: rejected (no face)")
+                    continue
+
+            logger.info(f"Faces: {num_faces}")
+
+            # Rule 5: Reject if more than one face detected
+            if num_faces > 1:
+                logger.info("OCR Text Ratio: 0.0\nDecision: rejected (multiple faces)")
+                continue
+
+            # Get the single face details
+            fx, fy, fw, fh = faces[0]
+            face_area = fw * fh
+            img_area = width * height
+            face_area_pct = (face_area / img_area) * 100
+
+            # Rule 6: Face area occupies less than 22% or more than 80% of image
+            if face_area_pct < 22 or face_area_pct > 80:
+                logger.info(f"OCR Text Ratio: 0.0\nDecision: rejected (face occupies {face_area_pct:.1f}% of image, outside 22-80%)")
+                continue
+
+            # Rule 7: Face centered check
+            face_x_center = fx + fw/2
+            face_y_center = fy + fh/2
+            img_x_center = width / 2
+            img_y_center = height / 2
+            x_offset = abs(face_x_center - img_x_center) / width
+            y_offset = abs(face_y_center - img_y_center) / height
+            if x_offset > 0.25 or y_offset > 0.35:
+                logger.info("OCR Text Ratio: 0.0\nDecision: rejected (face not centered)")
+                continue
+
+            # Rule 8: Detect text regions to compute OCR text density / text area
+            # Sobel horizontal gradients
+            grad = cv2.Sobel(gray, cv2.CV_8U, 1, 0, ksize=3)
+            _, thresh = cv2.threshold(grad, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 3))
+            dilated = cv2.dilate(thresh, kernel, iterations=1)
+            contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            text_area = 0
+            for ctr in contours:
+                cx, cy, cw, ch = cv2.boundingRect(ctr)
+                if cw > 10 and 5 < ch < 50:
+                    text_area += cw * ch
+
+            ocr_text_ratio = text_area / img_area
+            logger.info(f"OCR Text Ratio: {ocr_text_ratio:.2f}")
+
+            # Rule 9: Reject if text area > face area
+            if text_area > face_area:
+                logger.info("Decision: rejected (text area > face area)")
+                continue
+
+            # Rule 10: Reject if OCR text density occupies significant portion (> 30% of total image)
+            if ocr_text_ratio > 0.3:
+                logger.info("Decision: rejected (mostly text)")
+                continue
+
+            # Rule 11: Table detection
+            horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
+            detect_horizontal = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
+            cnts_h = cv2.findContours(detect_horizontal, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
+            vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 25))
+            detect_vertical = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
+            cnts_v = cv2.findContours(detect_vertical, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
+            if len(cnts_h) > 5 and len(cnts_v) > 5:
+                logger.info("Decision: rejected (table detected)")
+                continue
+
+            # Rule 12: OCR text content check for Resume/CV headings
+            text_content = ""
+            try:
+                import pytesseract
+                from PIL import Image
+                pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                text_content = pytesseract.image_to_string(pil_img).lower()
+            except Exception:
+                pass
+
+            if any(term in text_content for term in ("curriculum", "vitae", "resume", "cv", "education", "experience")):
+                logger.info("Decision: rejected (curriculum vitae header)")
+                continue
+
+            # If all checks pass, it is a valid candidate portrait!
+            logger.info("Decision: accepted (candidate portrait)")
+            valid_candidates.append({
+                'img_bytes': img_bytes,
+                'ext': ext,
+                'resolution': img_area,
+                'face_area': face_area
+            })
+
+        except Exception as e:
+            logger.error(f"Decision: rejected (exception occurred: {e})")
+            continue
+
+    if valid_candidates:
+        # Prefer the one with the largest face area, then resolution
+        valid_candidates.sort(key=lambda x: (x['face_area'], x['resolution']), reverse=True)
+        best = valid_candidates[0]
+        return best['img_bytes'], best['ext']
+
+    logger.info("[PHOTO] No valid candidate portrait found.")
+    return None, None
+
+
+def extract_profile_photo(file_bytes, filename):
+    ext = filename.split('.')[-1].lower()
+    images_list = []
+    if ext == 'pdf':
+        try:
+            import fitz
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                image_list = page.get_images(full=True)
+                for img_info in image_list:
+                    xref = img_info[0]
+                    base_image = doc.extract_image(xref)
+                    if not base_image:
+                        continue
+                    img_data = base_image.get("image")
+                    if img_data:
+                        images_list.append((img_data, base_image.get("ext", "png")))
+        except Exception as e:
+            logger.error(f"Error extracting photo from PDF: {e}")
+    elif ext in ['docx', 'doc']:
+        try:
+            import zipfile
+            import io
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                media_files = [f for f in z.namelist() if f.startswith('word/media/')]
+                media_files.sort()
+                for f_name in media_files:
+                    img_data = z.read(f_name)
+                    ext = f_name.split('.')[-1].lower()
+                    images_list.append((img_data, ext))
+        except Exception as e:
+            logger.error(f"Error extracting photo from DOCX: {e}")
+
+    return select_best_profile_photo(images_list)
+
+
+def merge_candidate_profile_data(
+    existing_profile,
+    parsed_data,
+    info=None,
+    raw_resume_text="",
+    file_bytes=None,
+    filename="resume.pdf",
+    security_data=None,
+    photo_bytes=None,
+    photo_ext=None,
+    uploaded_by=None,
+    job_id=None
+):
+    """
+    Intelligently merges newly extracted resume data into an existing CandidateProfile.
+    - Preserves all existing candidate information.
+    - Combines skills without duplicates (case-insensitive).
+    - Adds missing education entries without duplicating existing entries.
+    - Adds missing experience entries and enriches existing descriptions without duplication.
+    - Adds missing projects and certifications.
+    - Combines unique languages.
+    - Preserves and enriches professional summary.
+    - Preserves verified contact info unless missing.
+    - Does not overwrite populated fields with null/empty values.
+    - Updates resume storage, versioning, and audit logs.
+    - Recalculates ATS score.
+    - Entire operation runs in an atomic transaction.
+    """
+    from django.db import transaction
+    from services.resume_intelligence import ResumeIntelligenceService
+    from services.candidate_matching_service import CandidateMatchingService
+    from services.candidate_tagging_service import CandidateTaggingService
+
+    with transaction.atomic():
+        if info is None:
+            info = parsed_data.get('personal_info', {}) or {}
+
+        # 1. Skills Merge (combine unique skills)
+        existing_skills = {s.skill_name.strip().lower(): s for s in existing_profile.skills.all()}
+        new_skills_raw = parsed_data.get('skills', [])
+        merged_skills_list = [s.skill_name for s in existing_profile.skills.all()]
+
+        for sk in new_skills_raw:
+            if isinstance(sk, str) and sk.strip():
+                clean_sk = sk.strip()
+                sk_key = clean_sk.lower()
+                if sk_key not in existing_skills:
+                    formatted_name = clean_sk.title()[:100]
+                    new_skill_obj = CandidateSkill.objects.create(
+                        profile=existing_profile,
+                        skill_name=formatted_name
+                    )
+                    existing_skills[sk_key] = new_skill_obj
+                    merged_skills_list.append(formatted_name)
+
+        # 2. Education Merge (preserve existing, add missing)
+        existing_edus = list(existing_profile.educations.all())
+        new_edus_raw = parsed_data.get('education', [])
+
+        def is_same_education(e1_deg, e1_inst, e2_deg, e2_inst):
+            d1 = (e1_deg or '').strip().lower()
+            d2 = (e2_deg or '').strip().lower()
+            i1 = (e1_inst or '').strip().lower()
+            i2 = (e2_inst or '').strip().lower()
+            if not d1 and not d2:
+                return i1 == i2 and bool(i1)
+            if d1 == d2:
+                if not i1 or not i2 or i1 == i2 or i1 in i2 or i2 in i1:
+                    return True
+            if d1 and d2 and (d1 in d2 or d2 in d1):
+                if i1 and i2 and (i1 in i2 or i2 in i1):
+                    return True
+            return False
+
+        for edu in new_edus_raw:
+            if isinstance(edu, dict):
+                n_deg = (edu.get('degree') or '')[:255]
+                n_inst = (edu.get('institution') or '')[:255]
+                n_field = (edu.get('field_of_study') or '')[:255]
+                n_score = str(edu.get('score') or '')[:20] if edu.get('score') else None
+                n_start = parse_date_robust(edu.get('start_date'), None)
+                n_end = parse_date_robust(edu.get('end_date'), None)
+
+                already_exists = False
+                for ex in existing_edus:
+                    if is_same_education(ex.degree, ex.institution, n_deg, n_inst):
+                        already_exists = True
+                        if not ex.field_of_study and n_field:
+                            ex.field_of_study = n_field
+                            ex.save()
+                        if not ex.percentage_or_cgpa and n_score:
+                            ex.percentage_or_cgpa = n_score
+                            ex.save()
+                        if not ex.end_date and n_end:
+                            ex.end_date = n_end
+                            ex.save()
+                        break
+
+                if not already_exists and (n_deg or n_inst):
+                    new_edu = Education.objects.create(
+                        profile=existing_profile,
+                        institution=(n_inst or "Unknown")[:255],
+                        degree=(n_deg or "Degree")[:255],
+                        field_of_study=n_field if n_field else None,
+                        percentage_or_cgpa=n_score,
+                        start_date=n_start,
+                        end_date=n_end
+                    )
+                    existing_edus.append(new_edu)
+
+        # 3. Experience Merge (preserve existing, add missing, enrich sparse)
+        existing_exps = list(existing_profile.experiences.all())
+        new_exps_raw = parsed_data.get('experience', [])
+
+        def is_same_experience(e1_comp, e1_desig, e2_comp, e2_desig):
+            c1 = (e1_comp or '').strip().lower()
+            c2 = (e2_comp or '').strip().lower()
+            d1 = (e1_desig or '').strip().lower()
+            d2 = (e2_desig or '').strip().lower()
+            if not c1 or not c2:
+                return False
+            clean_c1 = re.sub(r'\b(pvt|ltd|limited|inc|llc|technologies|solutions|corp|corporation)\b', '', c1).strip()
+            clean_c2 = re.sub(r'\b(pvt|ltd|limited|inc|llc|technologies|solutions|corp|corporation)\b', '', c2).strip()
+            comp_match = (c1 == c2) or (clean_c1 and clean_c1 == clean_c2) or (clean_c1 in clean_c2) or (clean_c2 in clean_c1)
+            if comp_match:
+                if not d1 or not d2 or d1 == d2 or d1 in d2 or d2 in d1:
+                    return True
+            return False
+
+        for exp in new_exps_raw:
+            if isinstance(exp, dict):
+                n_comp = (exp.get('company') or exp.get('company_name') or '')[:255]
+                n_desig = (exp.get('designation') or exp.get('job_title') or '')[:255]
+                n_desc = exp.get('description') or ''
+                n_desc_html = ResumeIntelligenceService.parse_experience_description_to_html(n_desc)
+                n_start = parse_date_robust(exp.get('start_date'), None)
+                n_end = parse_date_robust(exp.get('end_date'), None)
+                n_curr = exp.get('is_current', False)
+
+                matched_exp = None
+                for ex in existing_exps:
+                    if is_same_experience(ex.company_name, ex.designation, n_comp, n_desig):
+                        matched_exp = ex
+                        break
+
+                if matched_exp:
+                    if (not matched_exp.description or len(matched_exp.description) < len(n_desc_html)) and n_desc_html:
+                        matched_exp.description = n_desc_html
+                        matched_exp.save()
+                    if not matched_exp.start_date and n_start:
+                        matched_exp.start_date = n_start
+                        matched_exp.save()
+                    if not matched_exp.end_date and n_end:
+                        matched_exp.end_date = n_end
+                        matched_exp.save()
+                elif n_comp:
+                    new_exp = Experience.objects.create(
+                        profile=existing_profile,
+                        company_name=n_comp,
+                        designation=n_desig or "Professional",
+                        description=n_desc_html,
+                        start_date=n_start,
+                        end_date=n_end,
+                        is_current=n_curr
+                    )
+                    existing_exps.append(new_exp)
+
+        # 4. Projects Merge
+        existing_projs = list(existing_profile.projects.all())
+        new_projs_raw = parsed_data.get('projects', [])
+
+        for proj in new_projs_raw:
+            if isinstance(proj, dict):
+                p_title = (proj.get('title') or '').strip()
+                p_desc = ResumeIntelligenceService.parse_experience_description_to_html(proj.get('description', ''))
+                p_link = proj.get('link', '') or None
+                if p_title:
+                    match = any(ex.title.strip().lower() == p_title.lower() for ex in existing_projs)
+                    if not match:
+                        new_p = Project.objects.create(
+                            profile=existing_profile,
+                            title=p_title[:255],
+                            description=p_desc,
+                            link=p_link
+                        )
+                        existing_projs.append(new_p)
+
+        # 5. Certifications Merge
+        existing_certs = list(existing_profile.certifications.all())
+        new_certs_raw = parsed_data.get('certifications', [])
+
+        for cert in new_certs_raw:
+            if isinstance(cert, dict):
+                c_name = (cert.get('name') or '').strip()
+                c_org = (cert.get('issuing_organization') or '').strip()[:255]
+                c_date = parse_date_robust(cert.get('issue_date'), None)
+                if c_name:
+                    match = any(ex.name.strip().lower() == c_name.lower() for ex in existing_certs)
+                    if not match:
+                        new_c = Certification.objects.create(
+                            profile=existing_profile,
+                            name=c_name[:255],
+                            issuing_organization=c_org,
+                            issue_date=c_date
+                        )
+                        existing_certs.append(new_c)
+
+        # 6. Languages Merge
+        existing_pj = existing_profile.parsed_json or {}
+        existing_langs = [str(l).strip() for l in existing_pj.get('languages', []) if str(l).strip()]
+        new_langs = [str(l).strip() for l in parsed_data.get('languages', []) if str(l).strip()]
+        merged_langs = list(dict.fromkeys([l.title() for l in existing_langs + new_langs if l]))
+
+        # 7. Summary Merge
+        new_summary = (parsed_data.get('summary') or '').strip()
+        curr_summary = (existing_profile.summary or '').strip()
+
+        if not curr_summary:
+            merged_summary = new_summary
+        elif not new_summary:
+            merged_summary = curr_summary
+        elif new_summary.lower() in curr_summary.lower():
+            merged_summary = curr_summary
+        elif curr_summary.lower() in new_summary.lower():
+            merged_summary = new_summary
+        else:
+            merged_summary = f"{curr_summary}\n\n{new_summary}"
+
+        existing_profile.summary = merged_summary
+
+        # 8. Contact & Profile Info Update (Never overwrite populated fields with empty/null)
+        new_name = (info.get('name') or '').strip()
+        if (not existing_profile.full_name or existing_profile.full_name in ("Unknown Candidate", "Unknown")) and new_name and new_name not in ("Unknown Candidate", "Unknown"):
+            existing_profile.full_name = new_name[:255]
+
+        new_company = (info.get('current_company') or '').strip()
+        if not existing_profile.current_company and new_company:
+            existing_profile.current_company = new_company[:255]
+
+        new_desig = (info.get('current_designation') or '').strip()
+        if (not existing_profile.current_designation or existing_profile.current_designation == "Professional") and new_desig:
+            existing_profile.current_designation = new_desig[:255]
+
+        new_loc = (info.get('location') or '').strip()
+        if (not existing_profile.location or existing_profile.location == "Unknown") and new_loc and new_loc != "Unknown":
+            existing_profile.location = new_loc[:100]
+
+        new_tot_exp = info.get('total_experience')
+        if new_tot_exp is not None and str(new_tot_exp).strip() not in ("", "None", "null"):
+            try:
+                val = Decimal(str(new_tot_exp))
+                if val > (existing_profile.total_experience or Decimal('0.0')):
+                    existing_profile.total_experience = val
+            except Exception:
+                pass
+
+        new_cur_sal = parsed_data.get('current_ctc')
+        if existing_profile.current_salary is None and new_cur_sal is not None and str(new_cur_sal).strip() not in ("", "None", "null"):
+            try:
+                existing_profile.current_salary = Decimal(str(new_cur_sal))
+            except Exception:
+                pass
+
+        new_exp_sal = parsed_data.get('expected_ctc')
+        if existing_profile.expected_salary is None and new_exp_sal is not None and str(new_exp_sal).strip() not in ("", "None", "null"):
+            try:
+                existing_profile.expected_salary = Decimal(str(new_exp_sal))
+            except Exception:
+                pass
+
+        new_notice = parsed_data.get('notice_period')
+        if not existing_profile.notice_period and new_notice:
+            try:
+                existing_profile.notice_period = int(new_notice)
+            except Exception:
+                pass
+
+        new_li = (info.get('linkedin_url') or '').strip()
+        if not existing_profile.linkedin_url and new_li:
+            existing_profile.linkedin_url = new_li[:200]
+
+        new_port = (info.get('portfolio_url') or '').strip()
+        if not existing_profile.portfolio_url and new_port:
+            existing_profile.portfolio_url = new_port[:200]
+
+        # 9. Update parsed_json
+        merged_pj = existing_profile.parsed_json or {}
+        merged_pj['personal_info'] = {
+            "name": existing_profile.full_name,
+            "email": existing_profile.user.email,
+            "phone": existing_profile.user.phone_number or '',
+            "location": existing_profile.location,
+            "preferred_location": info.get('preferred_location') or merged_pj.get('personal_info', {}).get('preferred_location', ''),
+            "current_company": existing_profile.current_company,
+            "current_designation": existing_profile.current_designation,
+            "total_experience": float(existing_profile.total_experience or 0.0),
+            "relevant_experience": float(info.get('relevant_experience') or merged_pj.get('personal_info', {}).get('relevant_experience', 0.0)),
+            "highest_qualification": existing_edus[0].degree if existing_edus else '',
+            "college_university": existing_edus[0].institution if existing_edus else '',
+            "linkedin_url": existing_profile.linkedin_url or '',
+            "github_url": info.get('github_url') or merged_pj.get('personal_info', {}).get('github_url', ''),
+            "portfolio_url": existing_profile.portfolio_url or '',
+        }
+        merged_pj['skills'] = merged_skills_list
+        merged_pj['languages'] = merged_langs
+        merged_pj['summary'] = merged_summary
+        merged_pj['experience'] = [
+            {
+                "company": e.company_name,
+                "designation": e.designation,
+                "description": e.description,
+                "start_date": e.start_date.strftime('%Y-%m') if e.start_date else '',
+                "end_date": e.end_date.strftime('%Y-%m') if e.end_date else '',
+                "is_current": e.is_current
+            }
+            for e in existing_exps
+        ]
+        merged_pj['education'] = [
+            {
+                "institution": ed.institution,
+                "degree": ed.degree,
+                "field_of_study": ed.field_of_study or '',
+                "score": ed.percentage_or_cgpa or '',
+                "start_date": ed.start_date.strftime('%Y-%m') if ed.start_date else '',
+                "end_date": ed.end_date.strftime('%Y-%m') if ed.end_date else ''
+            }
+            for ed in existing_edus
+        ]
+        merged_pj['projects'] = [
+            {
+                "title": p.title,
+                "description": p.description,
+                "link": p.link or ''
+            }
+            for p in existing_projs
+        ]
+        merged_pj['certifications'] = [
+            {
+                "name": c.name,
+                "issuing_organization": c.issuing_organization or '',
+                "issue_date": c.issue_date.strftime('%Y-%m-%d') if c.issue_date else ''
+            }
+            for c in existing_certs
+        ]
+        if raw_resume_text:
+            existing_profile.raw_resume_text = f"{(existing_profile.raw_resume_text or '').strip()}\n\n--- Merged Resume ({filename}) ---\n\n{raw_resume_text}".strip()
+
+        existing_profile.parsed_json = merged_pj
+
+        # 10. File storage & Resume Versions
+        if file_bytes:
+            from services.resume_storage_service import upload_and_verify_resume, copy_and_verify_original_resume
+            save_filename = security_data.get("secure_filename") if (security_data and security_data.get("secure_filename")) else filename
+            try:
+                saved_key, _ = upload_and_verify_resume(file_bytes, save_filename)
+                existing_profile.resume.name = saved_key
+                original_key = copy_and_verify_original_resume(saved_key, save_filename)
+                if original_key:
+                    existing_profile.original_file.name = original_key
+                existing_profile.original_filename = (filename or "")[:255]
+                existing_profile.secure_filename = (save_filename or "")[:255]
+                if security_data and security_data.get('sha256'):
+                    existing_profile.sha256 = security_data.get('sha256')
+            except Exception as e_file:
+                logger.error(f"[MERGE FILE SAVE] Error saving merged resume file: {e_file}")
+
+        # Profile Photo on Merge (if candidate currently has no photo)
+        if photo_bytes and (not existing_profile.has_profile_photo):
+            try:
+                from django.core.files.base import ContentFile
+                existing_profile.profile_photo.save(f"photo_{existing_profile.id}.{photo_ext or 'jpg'}", ContentFile(photo_bytes), save=False)
+                logger.info(f"[MERGE PHOTO SAVE SUCCESS] Extracted and saved profile photo for {existing_profile.full_name}")
+            except Exception as e_photo:
+                logger.error(f"[MERGE PHOTO SAVE ERROR] Failed to save merged profile photo: {e_photo}")
+
+        # Versioning & Audit Logs
+        v_num = (existing_profile.current_version or 1) + 1
+        existing_profile.current_version = v_num
+        if not existing_profile.resume_versions:
+            existing_profile.resume_versions = {}
+        existing_profile.resume_versions[str(v_num)] = {
+            "version": v_num,
+            "label": f"Merged Resume ({filename})",
+            "data": parsed_data,
+            "created_at": datetime.now().isoformat(),
+            "created_by": getattr(uploaded_by, 'email', 'Recruiter') if uploaded_by else 'Recruiter'
+        }
+
+        if not existing_profile.audit_logs:
+            existing_profile.audit_logs = []
+        existing_profile.audit_logs.append({
+            "action": f"Merged new resume ({filename}) into profile",
+            "timestamp": datetime.now().isoformat(),
+            "user": getattr(uploaded_by, 'email', 'Recruiter') if uploaded_by else 'Recruiter'
+        })
+
+        existing_profile.save()
+
+        # Log DuplicateResumeLog
+        DuplicateResumeLog.objects.create(
+            email=existing_profile.user.email,
+            phone=existing_profile.user.phone_number or '',
+            filename=filename,
+            action_taken='MERGED'
+        )
+
+        # Universal Tagging
+        try:
+            CandidateTaggingService.tag_candidate_profile(existing_profile, source='resume_merge')
+        except Exception as e_tag:
+            logger.warning(f"Tagging on merge failed: {e_tag}")
+
+        # ATS Scoring Recalculation
+        try:
+            CandidateMatchingService.update_ats_scores(candidate_id=existing_profile.id)
+            if job_id:
+                try:
+                    from apps.jobs.models import Job
+                    from apps.applications.models import Application
+                    job = Job.objects.get(id=job_id)
+                    Application.objects.get_or_create(job=job, candidate=existing_profile)
+                    CandidateMatchingService.update_ats_scores(candidate_id=existing_profile.id, job_id=job.id)
+                except Exception as e_job:
+                    logger.warning(f"Job mapping/scoring on merge failed: {e_job}")
+        except Exception as e_ats:
+            logger.error(f"ATS scoring on merge failed: {e_ats}", exc_info=True)
+
+        return existing_profile
+
+
+def process_and_merge_resume(file_obj, filename, candidate_profile_id, uploaded_by=None, job_id=None, security_data=None):
+    """
+    Parses a resume file and merges its content into an existing candidate profile atomically.
+    """
+    if hasattr(file_obj, 'seek'):
+        file_obj.seek(0)
+    file_bytes = file_obj.read()
+
+    if security_data is None:
+        from utils.security import perform_all_security_validations
+        security_data = perform_all_security_validations(file_bytes, filename)
+
+    if security_data and security_data.get("repaired_bytes"):
+        file_bytes = security_data["repaired_bytes"]
+
+    existing_profile = CandidateProfile.objects.get(id=candidate_profile_id)
+
+    from services.parseforge_service import ParseForgeService
+    parsed_data = None
+    photo_bytes, photo_ext = None, None
+    text = ""
+
+    if ParseForgeService.is_configured():
+        try:
+            pf_raw = ParseForgeService.parse_resume(file_bytes, filename)
+            parsed_data = ParseForgeService.map_response_to_talentvault(pf_raw)
+            text = clean_extracted_text(pf_raw.get("raw_text") or pf_raw.get("normalized_text") or "")
+            if parsed_data.get('photo_bytes'):
+                photo_bytes = parsed_data['photo_bytes']
+                photo_ext = parsed_data.get('photo_ext', 'jpg')
+        except Exception as e:
+            logger.warning(f"[MERGE PARSEFORGE FALLBACK] ParseForge failed during merge: {e}")
+            parsed_data = None
+
+    if parsed_data is None:
+        # 1. OCR Fallback
+        from services.resume_intelligence import ResumeIntelligenceService
+        ocr_result = ResumeIntelligenceService.run_ocr_pipeline(file_bytes, filename)
+        text = clean_extracted_text(ocr_result.get("text", ""))
+
+        # 2. LLM / NLP parse
+        try:
+            parsed_data = OpenAIResumeParser.parse(text)
+        except Exception as e:
+            logger.warning(f"AI parsing during merge fallback to NLP: {e}")
+
+        if parsed_data is None:
+            parsed_data = ResumeIntelligenceService.parse_resume_nlp(text, parsed_name=ocr_result.get("largest_bold_name"))
+
+        if parsed_data is not None:
+            try:
+                parsed_data = ResumeIntelligenceService.ai_improve_resume_data(parsed_data)
+            except Exception:
+                pass
+
+    info = parsed_data.get('personal_info', {}) if parsed_data else {}
+
+    if photo_bytes is None:
+        try:
+            photo_bytes, photo_ext = extract_profile_photo(file_bytes, filename)
+        except Exception:
+            pass
+
+    return merge_candidate_profile_data(
+        existing_profile=existing_profile,
+        parsed_data=parsed_data or {},
+        info=info,
+        raw_resume_text=text,
+        file_bytes=file_bytes,
+        filename=filename,
+        security_data=security_data,
+        photo_bytes=photo_bytes,
+        photo_ext=photo_ext,
+        uploaded_by=uploaded_by,
+        job_id=job_id
+    )

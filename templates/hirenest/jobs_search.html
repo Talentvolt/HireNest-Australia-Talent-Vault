@@ -1,0 +1,390 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}Search Jobs in Australia — HireNest Australia{% endblock %}
+{% block meta_description %}Search thousands of Australian jobs across Sydney, Melbourne, Brisbane, Perth, and remote locations with transparent AUD salary benchmarks.{% endblock %}
+
+{% block content %}
+<!-- Top Search Bar Container -->
+<section class="bg-white border-bottom py-3">
+    <div class="container-xl">
+        <form action="/jobs/" method="GET">
+            <div class="row g-2 align-items-center">
+                <!-- Search Keyword -->
+                <div class="col-lg-5 col-md-5">
+                    <div class="hn-search-input-group">
+                        <i class="bi bi-search hn-search-icon"></i>
+                        <input 
+                            type="text" 
+                            name="q" 
+                            value="{{ q }}" 
+                            class="hn-search-input" 
+                            placeholder="Job title, skill or company" 
+                            aria-label="Job title, skill or company"
+                        >
+                    </div>
+                </div>
+
+                <!-- Location -->
+                <div class="col-lg-4 col-md-4">
+                    <div class="hn-search-input-group">
+                        <i class="bi bi-geo-alt hn-search-icon"></i>
+                        <input 
+                            type="text" 
+                            name="location" 
+                            value="{{ location }}" 
+                            class="hn-search-input" 
+                            placeholder="Suburb, city or state (e.g. Sydney NSW)" 
+                            aria-label="Suburb, city or state"
+                            list="locations-search-list"
+                        >
+                        <datalist id="locations-search-list">
+                            {% for loc in locations_list %}
+                                <option value="{{ loc }}"></option>
+                            {% endfor %}
+                        </datalist>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="col-lg-3 col-md-3">
+                    <button type="submit" class="btn hn-btn-primary hn-search-btn justify-content-center">
+                        <i class="bi bi-search me-1"></i>
+                        <span>Search Jobs</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</section>
+
+<!-- Main Search Results & Filters Section -->
+<section class="py-4" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        
+        <!-- Mobile Filter Button Bar -->
+        <div class="d-lg-none d-flex justify-content-between align-items-center mb-3">
+            <span class="fw-bold text-dark">{{ paginator.count }} jobs found</span>
+            <button class="btn btn-outline-primary d-flex align-items-center gap-1.5" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileFilterDrawer">
+                <i class="bi bi-sliders"></i>
+                <span>Filter Jobs</span>
+            </button>
+        </div>
+
+        <div class="row g-4">
+            
+            <!-- LEFT COLUMN: Desktop Filters Panel -->
+            <div class="col-lg-3 d-none d-lg-block">
+                <div class="hn-filter-card sticky-top" style="top: 85px;">
+                    <div class="hn-filter-title">
+                        <span><i class="bi bi-funnel-fill text-primary me-1"></i>Filters</span>
+                        {% if q or location or selected_state or selected_job_types or selected_work_modes or min_salary or max_salary or selected_classification %}
+                            <a href="/jobs/" class="small text-danger text-decoration-none fw-semibold">Clear All</a>
+                        {% endif %}
+                    </div>
+
+                    <form action="/jobs/" method="GET" id="desktopFilterForm">
+                        <input type="hidden" name="q" value="{{ q }}">
+                        <input type="hidden" name="location" value="{{ location }}">
+                        <input type="hidden" name="sort_by" value="{{ sort_by }}">
+
+                        <!-- Australian State Filter -->
+                        <div class="hn-filter-section">
+                            <h4 class="hn-filter-heading">State / Territory</h4>
+                            <select name="state" class="form-select form-select-sm" onchange="document.getElementById('desktopFilterForm').submit();">
+                                <option value="">All Australian States</option>
+                                {% for s in states %}
+                                    <option value="{{ s.code }}" {% if selected_state == s.code %}selected{% endif %}>
+                                        {{ s.name }} ({{ s.code }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- Work Arrangement Filter -->
+                        <div class="hn-filter-section">
+                            <h4 class="hn-filter-heading">Work Arrangement</h4>
+                            <div class="hn-form-check form-check">
+                                <input class="form-check-input" type="checkbox" name="work_mode" value="REMOTE" id="wm_remote" {% if 'REMOTE' in selected_work_modes %}checked{% endif %} onchange="document.getElementById('desktopFilterForm').submit();">
+                                <label class="form-check-label hn-form-check-label" for="wm_remote">Remote (Work from Home)</label>
+                            </div>
+                            <div class="hn-form-check form-check">
+                                <input class="form-check-input" type="checkbox" name="work_mode" value="HYBRID" id="wm_hybrid" {% if 'HYBRID' in selected_work_modes %}checked{% endif %} onchange="document.getElementById('desktopFilterForm').submit();">
+                                <label class="form-check-label hn-form-check-label" for="wm_hybrid">Hybrid (Office + Home)</label>
+                            </div>
+                            <div class="hn-form-check form-check">
+                                <input class="form-check-input" type="checkbox" name="work_mode" value="ONSITE" id="wm_onsite" {% if 'ONSITE' in selected_work_modes %}checked{% endif %} onchange="document.getElementById('desktopFilterForm').submit();">
+                                <label class="form-check-label hn-form-check-label" for="wm_onsite">On-site</label>
+                            </div>
+                        </div>
+
+                        <!-- Employment Type Filter -->
+                        <div class="hn-filter-section">
+                            <h4 class="hn-filter-heading">Employment Type</h4>
+                            <div class="hn-form-check form-check">
+                                <input class="form-check-input" type="checkbox" name="job_type" value="FULL_TIME" id="jt_full" {% if 'FULL_TIME' in selected_job_types %}checked{% endif %} onchange="document.getElementById('desktopFilterForm').submit();">
+                                <label class="form-check-label hn-form-check-label" for="jt_full">Full Time</label>
+                            </div>
+                            <div class="hn-form-check form-check">
+                                <input class="form-check-input" type="checkbox" name="job_type" value="PART_TIME" id="jt_part" {% if 'PART_TIME' in selected_job_types %}checked{% endif %} onchange="document.getElementById('desktopFilterForm').submit();">
+                                <label class="form-check-label hn-form-check-label" for="jt_part">Part Time</label>
+                            </div>
+                            <div class="hn-form-check form-check">
+                                <input class="form-check-input" type="checkbox" name="job_type" value="CONTRACT" id="jt_contract" {% if 'CONTRACT' in selected_job_types %}checked{% endif %} onchange="document.getElementById('desktopFilterForm').submit();">
+                                <label class="form-check-label hn-form-check-label" for="jt_contract">Contract</label>
+                            </div>
+                            <div class="hn-form-check form-check">
+                                <input class="form-check-input" type="checkbox" name="job_type" value="FREELANCE" id="jt_casual" {% if 'FREELANCE' in selected_job_types %}checked{% endif %} onchange="document.getElementById('desktopFilterForm').submit();">
+                                <label class="form-check-label hn-form-check-label" for="jt_casual">Casual / Temp</label>
+                            </div>
+                        </div>
+
+                        <!-- Classification Filter -->
+                        <div class="hn-filter-section">
+                            <h4 class="hn-filter-heading">Classification</h4>
+                            <select name="classification" class="form-select form-select-sm" onchange="document.getElementById('desktopFilterForm').submit();">
+                                <option value="">All Classifications</option>
+                                {% for cat in classifications %}
+                                    <option value="{{ cat.name }}" {% if selected_classification == cat.name %}selected{% endif %}>
+                                        {{ cat.name }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- Salary Range (AUD) Filter -->
+                        <div class="hn-filter-section">
+                            <h4 class="hn-filter-heading">Minimum Salary (AUD)</h4>
+                            <select name="min_salary" class="form-select form-select-sm" onchange="document.getElementById('desktopFilterForm').submit();">
+                                <option value="">Any Salary</option>
+                                <option value="60000" {% if min_salary == '60000' %}selected{% endif %}>$60,000+ / year</option>
+                                <option value="80000" {% if min_salary == '80000' %}selected{% endif %}>$80,000+ / year</option>
+                                <option value="100000" {% if min_salary == '100000' %}selected{% endif %}>$100,000+ / year</option>
+                                <option value="130000" {% if min_salary == '130000' %}selected{% endif %}>$130,000+ / year</option>
+                                <option value="160000" {% if min_salary == '160000' %}selected{% endif %}>$160,000+ / year</option>
+                                <option value="200000" {% if min_salary == '200000' %}selected{% endif %}>$200,000+ / year</option>
+                            </select>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: Results Header & Job Cards -->
+            <div class="col-lg-9">
+                
+                <!-- Results Header Bar -->
+                <div class="d-flex flex-wrap justify-content-between align-items-center bg-white p-3 rounded-3 border mb-3">
+                    <div>
+                        <h2 class="fs-5 fw-bold text-dark mb-0">
+                            {% if q or location %}
+                                Jobs for "{{ q|default:'All roles' }}" in {{ location|default:'Australia' }}
+                            {% else %}
+                                All Jobs in Australia
+                            {% endif %}
+                        </h2>
+                        <div class="text-muted small">{{ paginator.count }} opportunities found</div>
+                    </div>
+
+                    <!-- Sort Dropdown -->
+                    <div class="d-flex align-items-center gap-2 mt-2 mt-sm-0">
+                        <span class="text-muted small fw-semibold">Sort by:</span>
+                        <select class="form-select form-select-sm" style="width: auto;" onchange="window.location.href=this.value;">
+                            <option value="?q={{ q }}&location={{ location }}&state={{ selected_state }}&sort_by=newest" {% if sort_by == 'newest' %}selected{% endif %}>Date (Newest)</option>
+                            <option value="?q={{ q }}&location={{ location }}&state={{ selected_state }}&sort_by=relevance" {% if sort_by == 'relevance' %}selected{% endif %}>Relevance</option>
+                            <option value="?q={{ q }}&location={{ location }}&state={{ selected_state }}&sort_by=salary_high" {% if sort_by == 'salary_high' %}selected{% endif %}>Salary (High to Low)</option>
+                            <option value="?q={{ q }}&location={{ location }}&state={{ selected_state }}&sort_by=salary_low" {% if sort_by == 'salary_low' %}selected{% endif %}>Salary (Low to High)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Active Filter Badges -->
+                {% if q or location or selected_state or selected_job_types or selected_work_modes or min_salary or selected_classification %}
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                        <span class="text-muted small fw-bold">Active Filters:</span>
+                        {% if q %}
+                            <span class="badge bg-white text-dark border p-2">Keyword: {{ q }} <a href="?location={{ location }}&state={{ selected_state }}" class="text-danger ms-1">&times;</a></span>
+                        {% endif %}
+                        {% if location %}
+                            <span class="badge bg-white text-dark border p-2">Location: {{ location }} <a href="?q={{ q }}&state={{ selected_state }}" class="text-danger ms-1">&times;</a></span>
+                        {% endif %}
+                        {% if selected_state %}
+                            <span class="badge bg-white text-dark border p-2">State: {{ selected_state }} <a href="?q={{ q }}&location={{ location }}" class="text-danger ms-1">&times;</a></span>
+                        {% endif %}
+                        {% if selected_classification %}
+                            <span class="badge bg-white text-dark border p-2">Category: {{ selected_classification }} <a href="?q={{ q }}&location={{ location }}" class="text-danger ms-1">&times;</a></span>
+                        {% endif %}
+                        {% if min_salary %}
+                            <span class="badge bg-white text-dark border p-2">Min Salary: ${{ min_salary }}+ AUD <a href="?q={{ q }}&location={{ location }}" class="text-danger ms-1">&times;</a></span>
+                        {% endif %}
+                        <a href="/jobs/" class="small text-danger fw-bold text-decoration-none ms-2">Reset All</a>
+                    </div>
+                {% endif %}
+
+                <!-- Job Cards List -->
+                {% for job in jobs %}
+                    <a href="/jobs/{{ job.id }}/" class="hn-job-card">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h3 class="hn-job-card-title">{{ job.title }}</h3>
+                                <div class="hn-job-card-company">
+                                    <i class="bi bi-building"></i>
+                                    <span>{{ job.display_company }}</span>
+                                </div>
+                            </div>
+                            <button 
+                                type="button" 
+                                class="hn-save-btn {% if job.id in saved_job_ids %}saved{% endif %}" 
+                                data-job-id="{{ job.id }}" 
+                                aria-label="Save Job"
+                                title="Save Job"
+                            >
+                                <i class="bi {% if job.id in saved_job_ids %}bi-heart-fill text-danger{% else %}bi-heart{% endif %}"></i>
+                            </button>
+                        </div>
+
+                        <div class="hn-job-meta-row">
+                            <span class="hn-meta-item"><i class="bi bi-geo-alt-fill text-danger"></i>{{ job.location }}</span>
+                            <span class="hn-badge-tag">{{ job.get_job_type_display }}</span>
+                            <span class="hn-badge-tag">{{ job.get_work_mode_display }}</span>
+                            <span class="hn-salary-tag">{{ job.formatted_salary_display }}</span>
+                            {% if job.id in applied_job_ids %}
+                                <span class="badge bg-success text-white py-1 px-2"><i class="bi bi-check-circle me-1"></i>Applied</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="hn-job-desc-snippet">
+                            {{ job.description|truncatewords:32 }}
+                        </div>
+
+                        <!-- Skills chips if available -->
+                        {% if job.get_required_skills_list %}
+                            <div class="d-flex flex-wrap gap-1.5 mb-3">
+                                {% for sk in job.get_required_skills_list|slice:":5" %}
+                                    <span class="badge bg-light text-secondary border font-medium" style="font-size: 0.76rem;">{{ sk }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        <div class="hn-job-footer">
+                            <span><i class="bi bi-clock me-1"></i>Listed {{ job.created_at|timesince }} ago</span>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="text-primary fw-bold">View Role Details &rarr;</span>
+                            </div>
+                        </div>
+                    </a>
+                {% empty %}
+                    <!-- Empty State -->
+                    <div class="text-center py-5 bg-white rounded-4 border p-4">
+                        <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center p-3 mb-3" style="width: 70px; height: 70px;">
+                            <i class="bi bi-search fs-2 text-muted"></i>
+                        </div>
+                        <h3 class="fs-4 fw-bold text-dark mb-2">No Matching Jobs Found</h3>
+                        <p class="text-muted max-w-500 mx-auto mb-4">
+                            We couldn't find any active jobs matching your current filter criteria. Try expanding your search location or clearing filters.
+                        </p>
+                        <div class="d-flex justify-content-center gap-2">
+                            <a href="/jobs/" class="btn hn-btn-primary">View All Jobs Across Australia</a>
+                        </div>
+                    </div>
+                {% endfor %}
+
+                <!-- Pagination -->
+                {% if is_paginated %}
+                    <nav class="mt-4" aria-label="Job results pagination">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?q={{ q }}&location={{ location }}&state={{ selected_state }}&sort_by={{ sort_by }}&page={{ page_obj.previous_page_number }}">
+                                        &larr; Previous
+                                    </a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">&larr; Previous</span></li>
+                            {% endif %}
+
+                            {% for num in paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                    <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                    <li class="page-item"><a class="page-link" href="?q={{ q }}&location={{ location }}&state={{ selected_state }}&sort_by={{ sort_by }}&page={{ num }}">{{ num }}</a></li>
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?q={{ q }}&location={{ location }}&state={{ selected_state }}&sort_by={{ sort_by }}&page={{ page_obj.next_page_number }}">
+                                        Next &rarr;
+                                    </a>
+                                </li>
+                            {% else %}
+                                <li class="page-item disabled"><span class="page-link">Next &rarr;</span></li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                {% endif %}
+
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- Mobile Filter Drawer (Offcanvas) -->
+<div class="offcanvas offcanvas-start" tabindex="-1" id="mobileFilterDrawer" aria-labelledby="mobileFilterDrawerLabel">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title fw-bold" id="mobileFilterDrawerLabel">Filter Jobs</h5>
+        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body">
+        <form action="/jobs/" method="GET">
+            <input type="hidden" name="q" value="{{ q }}">
+            <input type="hidden" name="location" value="{{ location }}">
+
+            <!-- State -->
+            <div class="mb-3">
+                <label class="form-label fw-bold small">State / Territory</label>
+                <select name="state" class="form-select">
+                    <option value="">All Australian States</option>
+                    {% for s in states %}
+                        <option value="{{ s.code }}" {% if selected_state == s.code %}selected{% endif %}>{{ s.name }} ({{ s.code }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Job Types -->
+            <div class="mb-3">
+                <label class="form-label fw-bold small">Employment Type</label>
+                <div class="form-check mb-1">
+                    <input class="form-check-input" type="checkbox" name="job_type" value="FULL_TIME" id="m_jt_full" {% if 'FULL_TIME' in selected_job_types %}checked{% endif %}>
+                    <label class="form-check-label" for="m_jt_full">Full Time</label>
+                </div>
+                <div class="form-check mb-1">
+                    <input class="form-check-input" type="checkbox" name="job_type" value="PART_TIME" id="m_jt_part" {% if 'PART_TIME' in selected_job_types %}checked{% endif %}>
+                    <label class="form-check-label" for="m_jt_part">Part Time</label>
+                </div>
+                <div class="form-check mb-1">
+                    <input class="form-check-input" type="checkbox" name="job_type" value="CONTRACT" id="m_jt_contract" {% if 'CONTRACT' in selected_job_types %}checked{% endif %}>
+                    <label class="form-check-label" for="m_jt_contract">Contract</label>
+                </div>
+            </div>
+
+            <!-- Work Mode -->
+            <div class="mb-4">
+                <label class="form-label fw-bold small">Work Arrangement</label>
+                <div class="form-check mb-1">
+                    <input class="form-check-input" type="checkbox" name="work_mode" value="REMOTE" id="m_wm_remote" {% if 'REMOTE' in selected_work_modes %}checked{% endif %}>
+                    <label class="form-check-label" for="m_wm_remote">Remote</label>
+                </div>
+                <div class="form-check mb-1">
+                    <input class="form-check-input" type="checkbox" name="work_mode" value="HYBRID" id="m_wm_hybrid" {% if 'HYBRID' in selected_work_modes %}checked{% endif %}>
+                    <label class="form-check-label" for="m_wm_hybrid">Hybrid</label>
+                </div>
+            </div>
+
+            <button type="submit" class="btn hn-btn-primary w-100 py-2">Apply Filters</button>
+            <a href="/jobs/" class="btn btn-light w-100 mt-2">Reset</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

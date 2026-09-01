@@ -1,0 +1,120 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}Apply for {{ job.title }} at {{ job.display_company }} — HireNest Australia{% endblock %}
+
+{% block content %}
+<section class="py-5" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                
+                <!-- Back Link -->
+                <div class="mb-3">
+                    <a href="/jobs/{{ job.id }}/" class="text-decoration-none text-muted fw-semibold small">
+                        &larr; Back to Job Details
+                    </a>
+                </div>
+
+                <!-- Job Application Card -->
+                <div class="bg-white rounded-4 border shadow-sm p-4 p-md-5">
+                    
+                    <!-- Header summary -->
+                    <div class="border-bottom pb-4 mb-4">
+                        <span class="badge bg-primary-subtle text-primary fw-semibold mb-2">Job Application</span>
+                        <h1 class="fs-2 fw-bold text-dark mb-1">{{ job.title }}</h1>
+                        <div class="fs-5 text-muted">{{ job.display_company }} • {{ job.location }} • {{ job.formatted_salary_display }}</div>
+                    </div>
+
+                    <!-- Application Form -->
+                    <form method="POST" action="/jobs/{{ job.id }}/apply/" enctype="multipart/form-data">
+                        {% csrf_token %}
+
+                        <h4 class="fs-5 fw-bold text-dark mb-3">1. Contact & Location Information</h4>
+                        
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-secondary">Full Name <span class="text-danger">*</span></label>
+                                <input type="text" name="full_name" class="form-control" value="{{ profile.full_name|default:request.user.get_full_name }}" required>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-secondary">Email Address <span class="text-danger">*</span></label>
+                                <input type="email" class="form-control bg-light" value="{{ request.user.email }}" readonly>
+                                <div class="form-text small">Your verified HireNest account email.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-secondary">Australian Phone Number <span class="text-danger">*</span></label>
+                                <input type="tel" name="phone_number" class="form-control" value="{{ request.user.phone_number|default:'' }}" placeholder="+61 400 123 456" required>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-secondary">Current Location (City / Suburb) <span class="text-danger">*</span></label>
+                                <input type="text" name="location" class="form-control" value="{{ profile.location|default:'' }}" placeholder="e.g. Sydney NSW" required>
+                            </div>
+                        </div>
+
+                        <h4 class="fs-5 fw-bold text-dark mb-3">2. Professional Details & Salary Expectations</h4>
+                        
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-secondary">Total Experience (Years)</label>
+                                <input type="number" step="0.5" name="total_experience" class="form-control" value="{{ profile.total_experience|default:'2' }}" min="0">
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-secondary">Expected Salary (AUD / yr)</label>
+                                <input type="number" name="expected_salary" class="form-control" value="{{ profile.expected_salary|default:'' }}" placeholder="e.g. 120000">
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-secondary">Notice Period (Days)</label>
+                                <input type="number" name="notice_period" class="form-control" value="{{ profile.notice_period|default:'30' }}" min="0">
+                            </div>
+                        </div>
+
+                        <h4 class="fs-5 fw-bold text-dark mb-3">3. Resume & Documents</h4>
+                        
+                        <div class="mb-4 p-3 bg-light rounded-3 border">
+                            {% if profile.has_resume %}
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="bi bi-file-earmark-pdf-fill text-danger fs-4"></i>
+                                        <div>
+                                            <span class="fw-bold text-dark">Current Profile Resume:</span>
+                                            <span class="text-muted small ms-1">{{ profile.resume.name|slice:"8:" }}</span>
+                                        </div>
+                                    </div>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">Ready to submit</span>
+                                </div>
+                                <div class="small text-muted mb-2">Or upload a new targeted resume for this role (PDF only, max 10MB):</div>
+                            {% else %}
+                                <div class="small text-danger fw-bold mb-2">Please upload your resume (PDF only, max 10MB):</div>
+                            {% endif %}
+                            <input type="file" name="resume_file" class="form-control" accept=".pdf" {% if not profile.has_resume %}required{% endif %}>
+                        </div>
+
+                        <h4 class="fs-5 fw-bold text-dark mb-3">4. Cover Note to Hiring Team (Optional)</h4>
+                        <div class="mb-4">
+                            <textarea name="cover_letter" class="form-control" rows="4" placeholder="Briefly highlight why you are a great fit for this Australian role..."></textarea>
+                        </div>
+
+                        <div class="d-flex align-items-center justify-content-between pt-3 border-top">
+                            <a href="/jobs/{{ job.id }}/" class="btn btn-outline-secondary">Cancel</a>
+                            <button type="submit" class="btn hn-btn-primary btn-lg fw-bold px-5">
+                                <i class="bi bi-send-fill me-1"></i>Submit Application
+                            </button>
+                        </div>
+
+                    </form>
+
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</section>
+{% endblock %}

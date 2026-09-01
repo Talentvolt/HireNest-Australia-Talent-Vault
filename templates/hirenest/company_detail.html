@@ -1,0 +1,80 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}{{ company.name }} Careers & Job Openings in Australia — HireNest{% endblock %}
+
+{% block content %}
+<section class="py-5 bg-white border-bottom">
+    <div class="container-xl">
+        <div class="d-flex flex-wrap align-items-center gap-4">
+            <div class="rounded-4 bg-primary bg-opacity-10 text-primary fw-bold d-flex align-items-center justify-content-center flex-shrink-0" style="width: 80px; height: 80px; font-size: 2rem;">
+                {{ company.name|slice:":1"|upper }}
+            </div>
+            <div>
+                <span class="badge bg-success-subtle text-success border border-success-subtle mb-1"><i class="bi bi-shield-check me-1"></i>Verified Australian Employer</span>
+                <h1 class="fs-2 fw-bold text-dark mb-1">{{ company.name }}</h1>
+                <div class="text-muted d-flex flex-wrap align-items-center gap-3">
+                    <span><i class="bi bi-tag me-1"></i>{{ company.industry }}</span>
+                    <span><i class="bi bi-geo-alt me-1 text-danger"></i>{{ company.location }}</span>
+                    {% if company.employee_count %}
+                        <span><i class="bi bi-people me-1"></i>{{ company.employee_count }} employees</span>
+                    {% endif %}
+                    {% if company.website %}
+                        <span><i class="bi bi-globe me-1"></i><a href="{{ company.website }}" target="_blank" rel="noopener" class="text-decoration-none text-primary">{{ company.website }}</a></span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-5" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        <div class="row g-4">
+            
+            <div class="col-lg-4">
+                <div class="bg-white rounded-4 border p-4 shadow-sm mb-4">
+                    <h3 class="fs-5 fw-bold text-dark mb-3">About {{ company.name }}</h3>
+                    <p class="text-secondary small leading-relaxed">
+                        {{ company.description|linebreaksbr }}
+                    </p>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <h3 class="fs-4 fw-bold text-dark mb-3">Active Job Openings ({{ active_jobs.count }})</h3>
+                
+                <div class="d-flex flex-column gap-3">
+                    {% for job in active_jobs %}
+                        <a href="/jobs/{{ job.id }}/" class="hn-job-card mb-0">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <h4 class="hn-job-card-title">{{ job.title }}</h4>
+                                    <div class="text-muted small">{{ job.department|default:job.company.industry }}</div>
+                                </div>
+                                <span class="hn-salary-tag">{{ job.formatted_salary_display }}</span>
+                            </div>
+
+                            <div class="hn-job-meta-row">
+                                <span class="hn-meta-item"><i class="bi bi-geo-alt-fill text-danger"></i>{{ job.location }}</span>
+                                <span class="hn-badge-tag">{{ job.get_job_type_display }}</span>
+                                <span class="hn-badge-tag">{{ job.get_work_mode_display }}</span>
+                            </div>
+
+                            <div class="hn-job-footer">
+                                <span>Listed {{ job.created_at|timesince }} ago</span>
+                                <span class="text-primary fw-bold">View & Apply &rarr;</span>
+                            </div>
+                        </a>
+                    {% empty %}
+                        <div class="bg-white rounded-4 border p-4 text-center text-muted">
+                            No active job postings from {{ company.name }} at this moment.
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+{% endblock %}

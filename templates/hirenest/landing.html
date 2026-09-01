@@ -1,0 +1,452 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}HireNest Australia | Find Jobs & Build Your Future{% endblock %}
+{% block meta_description %}Discover thousands of job opportunities across Sydney, Melbourne, Brisbane, Perth, Adelaide, and regional hubs. Apply directly to verified Australian companies on HireNest.{% endblock %}
+
+{% block content %}
+<!-- ==========================================================================
+     CANDIDATE HERO SECTION
+     ========================================================================== -->
+<section class="hn-hero-section hn-candidate-hero">
+    <!-- Candidate Hero Image Reference: {% static 'images/candidate-hero.webp' %} -->
+    <div class="container-xl">
+        <div class="row align-items-center g-4 g-lg-5">
+            
+            <!-- Left Column: Headlines & Search Form -->
+            <div class="col-lg-7 text-start">
+                
+                <div class="hn-hero-badge mb-3">
+                    <i class="bi bi-geo-alt-fill text-danger"></i>
+                    <span>Australia's Dedicated Employment Network • 100% Verified Local Roles</span>
+                </div>
+
+                <h1 class="hn-hero-title">
+                    Find the right job.<br>
+                    <span class="hn-title-accent">Build your future.</span>
+                </h1>
+
+                <p class="hn-hero-subtitle">
+                    Discover thousands of opportunities with Australia's growing companies across Sydney, Melbourne, Brisbane, Perth, Adelaide, and regional hubs.
+                </p>
+
+                <!-- Search Component -->
+                <div class="hn-search-card text-start">
+                    <form action="/jobs/" method="GET">
+                        <div class="row g-2 align-items-center">
+                            
+                            <!-- Field 1: Keywords / Title -->
+                            <div class="col-md-6 col-12">
+                                <div class="hn-search-input-group">
+                                    <i class="bi bi-search hn-search-icon"></i>
+                                    <input 
+                                        type="text" 
+                                        name="q" 
+                                        class="hn-search-input" 
+                                        placeholder="Job title, keyword or company" 
+                                        aria-label="Job title, keyword or company"
+                                        autocomplete="off"
+                                    >
+                                </div>
+                            </div>
+
+                            <!-- Field 2: Suburb, City or Region -->
+                            <div class="col-md-6 col-12">
+                                <div class="hn-search-input-group">
+                                    <i class="bi bi-geo-alt hn-search-icon"></i>
+                                    <input 
+                                        type="text" 
+                                        name="location" 
+                                        class="hn-search-input" 
+                                        placeholder="Suburb, city or region (e.g. Sydney NSW)" 
+                                        aria-label="Suburb, city or region"
+                                        autocomplete="off"
+                                        list="au-locations-datalist"
+                                    >
+                                    <datalist id="au-locations-datalist">
+                                        {% for loc in popular_locations %}
+                                            <option value="{{ loc }}"></option>
+                                        {% endfor %}
+                                    </datalist>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="col-12 mt-2">
+                                <button type="submit" class="btn hn-btn-primary hn-search-btn w-100 justify-content-center py-2.5">
+                                    <i class="bi bi-search me-1"></i>
+                                    <span>Search Jobs Across Australia</span>
+                                </button>
+                            </div>
+
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Popular Search Chips -->
+                <div class="hn-search-chips">
+                    <span class="hn-chip-label">Popular Searches:</span>
+                    {% for chip in popular_chips %}
+                        <a href="/jobs/?q={{ chip.query }}" class="hn-chip">
+                            {{ chip.label }}
+                        </a>
+                    {% endfor %}
+                </div>
+
+            </div>
+
+            <!-- Right Column: Floating Career Match Dashboard Card -->
+            <div class="col-lg-5">
+                <div class="hn-recruiter-card">
+                    
+                    <!-- Card Header -->
+                    <div class="hn-recruiter-card-header">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="hn-logo-icon" style="width: 32px; height: 32px; font-size: 0.95rem; border-radius: 8px;">
+                                <i class="bi bi-person-badge-fill"></i>
+                            </div>
+                            <span class="fw-bold text-dark" style="font-size: 0.95rem;">Career Match Hub</span>
+                        </div>
+                        <span class="hn-active-match-badge">
+                            <span class="hn-live-dot"></span>Live Matching
+                        </span>
+                    </div>
+
+                    <!-- Match 1: Senior Python Backend Engineer -->
+                    <div class="hn-match-item">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="hn-match-title">Senior Python Backend Engineer</span>
+                            <span class="badge bg-primary text-white fw-bold px-2 py-1" style="font-size: 0.72rem; border-radius: 6px;">98% Match</span>
+                        </div>
+                        <div class="hn-match-candidate">
+                            Atlassian Australia • $150k - $190k • Sydney NSW
+                        </div>
+                        <div class="hn-match-progress-wrap">
+                            <div class="hn-match-progress-bar bg-primary" style="width: 98%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Match 2: Lead Financial Analyst -->
+                    <div class="hn-match-item">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="hn-match-title">Lead Financial Analyst (Melbourne)</span>
+                            <span class="badge bg-success text-white fw-bold px-2 py-1" style="font-size: 0.72rem; border-radius: 6px;">94% Match</span>
+                        </div>
+                        <div class="hn-match-candidate">
+                            Macquarie Group • $135k - $160k • Hybrid VIC
+                        </div>
+                        <div class="hn-match-progress-wrap">
+                            <div class="hn-match-progress-bar bg-success" style="width: 94%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Card Action Button -->
+                    <div class="mt-3">
+                        <a href="/jobs/" class="btn hn-btn-primary w-100 fw-bold justify-content-center py-2.5" style="border-radius: 10px; font-size: 0.92rem;">
+                            <span>Explore All {{ total_active_jobs|default:"500" }}+ Active Jobs</span>
+                            <i class="bi bi-arrow-right ms-1"></i>
+                        </a>
+                    </div>
+
+                    <!-- Card Live Metadata Subtitle -->
+                    <div class="d-flex align-items-center justify-content-between text-muted mt-2.5 pt-2 border-top" style="font-size: 0.72rem;">
+                        <span><i class="bi bi-shield-check text-success me-1"></i>100% Verified Australian Roles</span>
+                        <span>NES & Fair Work Compliant</span>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     POPULAR JOB CATEGORIES
+     ========================================================================== -->
+<section class="py-5 bg-white border-bottom">
+    <div class="container-xl">
+        <div class="d-flex flex-wrap align-items-end justify-content-between mb-4">
+            <div>
+                <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Browse Opportunities</span>
+                <h2 class="fs-2 fw-bold text-dark mb-1">Popular Job Categories</h2>
+                <p class="text-muted mb-0">Discover roles tailored to Australia's fastest-growing employment sectors.</p>
+            </div>
+            <a href="/jobs/" class="btn hn-btn-outline mt-2 mt-sm-0">View All Categories <i class="bi bi-arrow-right ms-1"></i></a>
+        </div>
+
+        <div class="row g-3">
+            {% for cat in classifications %}
+                <div class="col-xl-3 col-lg-4 col-md-6">
+                    <a href="/jobs/?classification={{ cat.name|urlencode }}" class="hn-category-card">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="hn-category-icon">
+                                <i class="bi {{ cat.icon }}"></i>
+                            </div>
+                            <span class="badge bg-light text-primary border fw-semibold small">{{ cat.badge }}</span>
+                        </div>
+                        <h3 class="hn-category-name">{{ cat.name }}</h3>
+                        <div class="hn-category-count mt-auto">{{ cat.live_count }} Active Roles</div>
+                    </a>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     TOP CITIES IN AUSTRALIA
+     ========================================================================== -->
+<section class="py-5" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        <div class="d-flex flex-wrap align-items-end justify-content-between mb-4">
+            <div>
+                <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Explore Locations</span>
+                <h2 class="fs-2 fw-bold text-dark mb-1">Top Cities in Australia</h2>
+                <p class="text-muted mb-0">Find career opportunities in Australia's major metropolitan and regional business centres.</p>
+            </div>
+            <a href="/jobs/" class="btn hn-btn-outline mt-2 mt-sm-0">All Locations <i class="bi bi-arrow-right ms-1"></i></a>
+        </div>
+
+        <div class="row g-4">
+            {% for city in cities %}
+                <div class="col-lg-4 col-md-6">
+                    <a href="/jobs/?location={{ city.query|urlencode }}" class="hn-city-card">
+                        <img src="{{ city.image_url }}" alt="{{ city.name }} Australia" class="hn-city-img" loading="lazy">
+                        <div class="hn-city-overlay">
+                            <h3 class="hn-city-name">{{ city.name }}, {{ city.state }}</h3>
+                            <div class="small opacity-90 mb-1">{{ city.description }}</div>
+                            <span class="hn-city-badge"><i class="bi bi-briefcase me-1"></i>{{ city.live_count }}</span>
+                        </div>
+                    </a>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     WHY JOB SEEKERS CHOOSE HIRENEST (4 FEATURE CARDS)
+     ========================================================================== -->
+<section class="py-5 bg-white border-top border-bottom">
+    <div class="container-xl">
+        <div class="text-center max-w-700 mx-auto mb-5">
+            <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Our Advantage</span>
+            <h2 class="fs-2 fw-bold text-dark mb-2">Why Job Seekers Choose HireNest</h2>
+            <p class="text-muted">Built specifically for the Australian employment market to give you transparency, speed, and real career growth.</p>
+        </div>
+
+        <div class="row g-4">
+            
+            <!-- Card 1: Quality Jobs -->
+            <div class="col-lg-3 col-md-6">
+                <div class="p-4 rounded-4 bg-light border h-100 text-center d-flex flex-column">
+                    <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-inline-flex align-items-center justify-content-center mx-auto mb-3" style="width: 58px; height: 58px;">
+                        <i class="bi bi-patch-check-fill fs-3 text-primary"></i>
+                    </div>
+                    <h3 class="fw-bold fs-5 text-dark mb-2">Quality Jobs</h3>
+                    <p class="text-muted small leading-relaxed mb-0">
+                        Verified job listings from trusted Australian employers, adhering to National Employment Standards.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Card 2: Smart Matching -->
+            <div class="col-lg-3 col-md-6">
+                <div class="p-4 rounded-4 bg-light border h-100 text-center d-flex flex-column">
+                    <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-inline-flex align-items-center justify-content-center mx-auto mb-3" style="width: 58px; height: 58px;">
+                        <i class="bi bi-cpu-fill fs-3 text-primary"></i>
+                    </div>
+                    <h3 class="fw-bold fs-5 text-dark mb-2">Smart Matching</h3>
+                    <p class="text-muted small leading-relaxed mb-0">
+                        Get tailored job recommendations matched to your skills, experience, and salary expectations.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Card 3: Easy Applications -->
+            <div class="col-lg-3 col-md-6">
+                <div class="p-4 rounded-4 bg-light border h-100 text-center d-flex flex-column">
+                    <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-inline-flex align-items-center justify-content-center mx-auto mb-3" style="width: 58px; height: 58px;">
+                        <i class="bi bi-send-check-fill fs-3 text-primary"></i>
+                    </div>
+                    <h3 class="fw-bold fs-5 text-dark mb-2">Easy Applications</h3>
+                    <p class="text-muted small leading-relaxed mb-0">
+                        Apply quickly with your saved profile or targeted resume in one click and track application status.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Card 4: Career Support -->
+            <div class="col-lg-3 col-md-6">
+                <div class="p-4 rounded-4 bg-light border h-100 text-center d-flex flex-column">
+                    <div class="rounded-circle bg-primary bg-opacity-10 text-primary d-inline-flex align-items-center justify-content-center mx-auto mb-3" style="width: 58px; height: 58px;">
+                        <i class="bi bi-journal-bookmark-fill fs-3 text-primary"></i>
+                    </div>
+                    <h3 class="fw-bold fs-5 text-dark mb-2">Career Support</h3>
+                    <p class="text-muted small leading-relaxed mb-0">
+                        Access Australian salary benchmarks, ATS resume templates, and Fair Work workplace rights advice.
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     FEATURED AUSTRALIAN JOBS
+     ========================================================================== -->
+<section class="py-5" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        <div class="d-flex flex-wrap align-items-end justify-content-between mb-4">
+            <div>
+                <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Verified Vacancies</span>
+                <h2 class="fs-2 fw-bold text-dark mb-1">Featured Jobs in Australia</h2>
+                <p class="text-muted mb-0">Apply directly to high-priority opportunities across the country.</p>
+            </div>
+            <a href="/jobs/" class="btn hn-btn-primary mt-2 mt-sm-0">Browse All {{ total_active_jobs }} Jobs <i class="bi bi-arrow-right ms-1"></i></a>
+        </div>
+
+        <div class="row g-3">
+            {% for job in featured_jobs %}
+                <div class="col-lg-6">
+                    <a href="/jobs/{{ job.id }}/" class="hn-job-card h-100">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h3 class="hn-job-card-title">{{ job.title }}</h3>
+                                <div class="hn-job-card-company">
+                                    <i class="bi bi-building"></i>
+                                    <span>{{ job.display_company }}</span>
+                                </div>
+                            </div>
+                            <button type="button" class="hn-save-btn" data-job-id="{{ job.id }}" aria-label="Save this job" title="Save Job">
+                                <i class="bi bi-heart"></i>
+                            </button>
+                        </div>
+
+                        <div class="hn-job-meta-row">
+                            <span class="hn-meta-item"><i class="bi bi-geo-alt-fill text-danger"></i>{{ job.location }}</span>
+                            <span class="hn-badge-tag">{{ job.get_job_type_display }}</span>
+                            <span class="hn-badge-tag">{{ job.get_work_mode_display }}</span>
+                            <span class="hn-salary-tag">{{ job.formatted_salary_display }}</span>
+                        </div>
+
+                        <div class="hn-job-desc-snippet">
+                            {{ job.description|truncatewords:25 }}
+                        </div>
+
+                        <div class="hn-job-footer">
+                            <span><i class="bi bi-clock me-1"></i>Posted {{ job.created_at|timesince }} ago</span>
+                            <span class="fw-bold text-primary">View Details & Apply &rarr;</span>
+                        </div>
+                    </a>
+                </div>
+            {% empty %}
+                <div class="col-12 text-center py-5">
+                    <div class="p-4 bg-white rounded-3 border">
+                        <i class="bi bi-briefcase fs-1 text-muted"></i>
+                        <h4 class="mt-2 fw-bold">Connecting Australian Job Opportunities</h4>
+                        <p class="text-muted">Explore roles across all major Australian cities and regions.</p>
+                        <a href="/jobs/" class="btn hn-btn-primary">Search Jobs</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     POPULAR EMPLOYERS IN AUSTRALIA
+     ========================================================================== -->
+<section class="py-5 bg-white border-top border-bottom">
+    <div class="container-xl">
+        <div class="d-flex flex-wrap align-items-end justify-content-between mb-4">
+            <div>
+                <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Top Employers</span>
+                <h2 class="fs-2 fw-bold text-dark mb-1">Popular Employers in Australia</h2>
+                <p class="text-muted mb-0">Explore career paths with Australia's most recognized organizations.</p>
+            </div>
+            <a href="/companies/" class="btn hn-btn-outline mt-2 mt-sm-0">View All Companies <i class="bi bi-arrow-right ms-1"></i></a>
+        </div>
+
+        <div class="row g-3">
+            {% for comp in featured_companies %}
+                <div class="col-xl-3 col-lg-4 col-md-6">
+                    <a href="/companies/{{ comp.slug }}/" class="p-3 bg-white rounded-3 border d-flex align-items-center gap-3 text-decoration-none text-dark h-100 shadow-sm-hover transition">
+                        <div class="rounded-3 bg-light border d-flex align-items-center justify-content-center fw-bold text-primary flex-shrink-0" style="width: 48px; height: 48px; font-size: 1.2rem;">
+                            {{ comp.name|slice:":1"|upper }}
+                        </div>
+                        <div class="overflow-hidden">
+                            <h4 class="fs-6 fw-bold mb-0 text-truncate text-dark">{{ comp.name }}</h4>
+                            <div class="text-muted small text-truncate">{{ comp.industry }} • {{ comp.location }}</div>
+                            <span class="badge bg-primary-subtle text-primary mt-1" style="font-size: 0.72rem;">{{ comp.active_jobs_count }} open roles</span>
+                        </div>
+                    </a>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     CAREER ADVICE & SALARY GUIDE PREVIEW
+     ========================================================================== -->
+<section class="py-5" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        <div class="d-flex flex-wrap align-items-end justify-content-between mb-4">
+            <div>
+                <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Career Intelligence</span>
+                <h2 class="fs-2 fw-bold text-dark mb-1">Australian Career Advice & Salary Insights</h2>
+                <p class="text-muted mb-0">Expert guidance on resumes, interview techniques, and AUD remuneration standards.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="/career-advice/" class="btn hn-btn-outline">Career Advice</a>
+                <a href="/salary-guide/" class="btn hn-btn-outline">Salary Guide</a>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            {% for article in career_articles %}
+                <div class="col-md-4">
+                    <div class="card h-100 border rounded-4 shadow-sm p-3 bg-white">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <span class="badge bg-light text-primary border">{{ article.category }}</span>
+                            <span class="text-muted small"><i class="bi bi-clock me-1"></i>{{ article.read_time }}</span>
+                        </div>
+                        <h4 class="fs-5 fw-bold text-dark mb-2">{{ article.title }}</h4>
+                        <p class="text-muted small mb-3">{{ article.summary }}</p>
+                        <a href="/career-advice/" class="mt-auto fw-bold text-primary text-decoration-none">Read Full Guide &rarr;</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     CALL TO ACTION / EMPLOYER BANNER
+     ========================================================================== -->
+<section class="py-5" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff;">
+    <div class="container-xl">
+        <div class="row align-items-center justify-content-between g-4">
+            <div class="col-lg-8">
+                <span class="badge bg-primary text-white px-3 py-1.5 mb-2 fw-bold">Australian Employers & Recruiters</span>
+                <h2 class="fs-1 fw-bold text-white mb-2">Looking to Hire Top Australian Talent?</h2>
+                <p class="text-secondary fs-5 mb-0">Post jobs, access our pre-screened candidate database, and streamline hiring with AI intelligence and enterprise ATS workflows.</p>
+            </div>
+            <div class="col-lg-4 text-lg-end">
+                <a href="/employers/" class="btn btn-primary btn-lg fw-bold px-4 py-2.5 me-2">For Employers</a>
+                <a href="/employers/register/" class="btn btn-outline-light btn-lg fw-bold px-4 py-2.5">Post a Job</a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: hirenest-australia
+    runtime: python
+    plan: starter
+    buildCommand: ./build.sh
+    startCommand: gunicorn config.wsgi:application
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SECURE_SSL_REDIRECT
+        value: "1"
+      - key: TALENTVAULT_RECRUITER_WORKSPACE_URL
+        value: https://talent-vault.in/dashboard/recruiter/
+      - key: DATABASE_URL
+        sync: false

@@ -1,0 +1,277 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    
+    <!-- SEO & Metadata -->
+    <title>{% block title %}HireNest Australia — Find Your Next Job & Career Opportunities{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}Discover thousands of job opportunities across Sydney, Melbourne, Brisbane, Perth, and regional Australia. Connect directly with verified Australian employers on HireNest.{% endblock %}">
+    <meta name="keywords" content="jobs in australia, sydney jobs, melbourne jobs, nursing jobs australia, developer jobs sydney, mining jobs perth, hirenest australia">
+    <link rel="canonical" href="https://hirenest.com.au{{ request.path }}">
+    
+    <!-- Open Graph / Social Sharing -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="HireNest Australia">
+    <meta property="og:title" content="{% block og_title %}HireNest Australia — Jobs Across Australia{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Discover thousands of jobs with top Australian employers on HireNest.{% endblock %}">
+    <meta property="og:url" content="https://hirenest.com.au{{ request.path }}">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap 5 & Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <!-- HireNest Australia Custom Design System -->
+    <link rel="stylesheet" href="{% static 'css/hirenest.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="hirenest-body">
+
+    <!-- HireNest Australia Header -->
+    <header class="hn-navbar py-2.5">
+        <div class="container-xl">
+            <div class="d-flex align-items-center justify-content-between">
+                
+                <!-- Brand Logo -->
+                <div class="d-flex align-items-center gap-4">
+                    <a href="/" class="hn-logo-wrap">
+                        <div class="hn-logo-icon">
+                            <i class="bi bi-briefcase-fill"></i>
+                        </div>
+                        <div class="hn-logo-text">
+                            <span class="hn-logo-title">HireNest</span>
+                            <span class="hn-logo-subtitle">Australia</span>
+                        </div>
+                    </a>
+
+                    <!-- Desktop Primary Navigation -->
+                    <nav class="d-none d-lg-flex align-items-center gap-1">
+                        <a href="/jobs/" class="hn-nav-link {% if request.path == '/jobs/' or '/jobs/' in request.path and '/employers' not in request.path %}active{% endif %}">Find Jobs</a>
+                        <a href="/companies/" class="hn-nav-link {% if '/companies' in request.path %}active{% endif %}">Companies</a>
+                        <a href="/career-advice/" class="hn-nav-link {% if '/career-advice' in request.path %}active{% endif %}">Career Advice</a>
+                        <a href="/salary-guide/" class="hn-nav-link {% if '/salary-guide' in request.path %}active{% endif %}">Salary Guide</a>
+                        <a href="/resources/" class="hn-nav-link {% if '/resources' in request.path %}active{% endif %}">Resources</a>
+                    </nav>
+                </div>
+
+                <!-- Right Actions / User Navigation -->
+                <div class="d-flex align-items-center gap-2.5">
+                    
+                    <!-- For Employers Link / Button -->
+                    <a href="/employers/" class="hn-btn-employer d-none d-md-inline-flex align-items-center gap-1.5">
+                        <i class="bi bi-building"></i>
+                        <span>For Employers</span>
+                    </a>
+
+                    {% if request.user.is_authenticated %}
+                        {% if request.user.role == 'CANDIDATE' %}
+                            <!-- Candidate User Dropdown -->
+                            <div class="dropdown">
+                                <button class="btn hn-btn-outline dropdown-toggle d-flex align-items-center gap-2 py-1.5 px-3" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold" style="width: 28px; height: 28px; font-size: 0.8rem;">
+                                        {{ request.user.first_name|default:request.user.email|slice:":1"|upper }}
+                                    </div>
+                                    <span class="d-none d-sm-inline fw-semibold text-truncate" style="max-width: 140px;">
+                                        {{ request.user.first_name|default:request.user.email }}
+                                    </span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 mt-2" style="border-radius: 12px; min-width: 220px;">
+                                    <li class="px-3 py-2 border-bottom">
+                                        <div class="fw-bold text-dark">{{ request.user.get_full_name|default:request.user.email }}</div>
+                                        <div class="text-muted small text-truncate">{{ request.user.email }}</div>
+                                    </li>
+                                    <li><a class="dropdown-item py-2" href="/profile/"><i class="bi bi-person me-2 text-primary"></i>My Profile & Resume</a></li>
+                                    <li><a class="dropdown-item py-2" href="/applications/"><i class="bi bi-file-earmark-check me-2 text-success"></i>My Applications</a></li>
+                                    <li><a class="dropdown-item py-2" href="/saved-jobs/"><i class="bi bi-bookmark-heart me-2 text-danger"></i>Saved Jobs</a></li>
+                                    <li><hr class="dropdown-divider my-1"></li>
+                                    <li><a class="dropdown-item py-2 text-danger" href="/logout/"><i class="bi bi-box-arrow-right me-2"></i>Log Out</a></li>
+                                </ul>
+                            </div>
+                        {% else %}
+                            <!-- Recruiter Workspace Shortcut -->
+                            <a href="/employers/login/" class="hn-btn-primary">
+                                <i class="bi bi-speedometer2"></i>
+                                <span>Recruiter Workspace</span>
+                            </a>
+                        {% endif %}
+                    {% else %}
+                        <!-- Guest Auth Links -->
+                        <a href="/login/" class="hn-btn-outline">Log In</a>
+                        <a href="/register/" class="hn-btn-primary">Sign Up</a>
+                    {% endif %}
+
+                    <!-- Mobile Menu Toggler -->
+                    <button class="btn btn-light d-lg-none p-2 border" type="button" data-bs-toggle="offcanvas" data-bs-target="#hnMobileMenu" aria-controls="hnMobileMenu" aria-label="Toggle navigation">
+                        <i class="bi bi-list fs-5"></i>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Navigation Offcanvas -->
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="hnMobileMenu" aria-labelledby="hnMobileMenuLabel">
+        <div class="offcanvas-header border-bottom">
+            <div class="d-flex align-items-center gap-2">
+                <div class="hn-logo-icon" style="width: 32px; height: 32px; font-size: 1rem;">
+                    <i class="bi bi-briefcase-fill"></i>
+                </div>
+                <h5 class="offcanvas-title fw-bold" id="hnMobileMenuLabel">HireNest Australia</h5>
+            </div>
+            <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body d-flex flex-column justify-content-between">
+            <div class="list-group list-group-flush mb-4">
+                <a href="/jobs/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-search me-2 text-primary"></i>Find Jobs</a>
+                <a href="/companies/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-buildings me-2 text-primary"></i>Companies</a>
+                <a href="/career-advice/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-journal-text me-2 text-primary"></i>Career Advice</a>
+                <a href="/salary-guide/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-currency-dollar me-2 text-primary"></i>Salary Guide (AUD)</a>
+                <a href="/resources/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-folder2-open me-2 text-primary"></i>Resources & Templates</a>
+                <a href="/employers/" class="list-group-item list-group-item-action py-3 fw-semibold bg-light"><i class="bi bi-building-gear me-2 text-dark"></i>Hire Talent (Employers)</a>
+            </div>
+
+            <div class="border-top pt-3">
+                {% if request.user.is_authenticated %}
+                    {% if request.user.role == 'CANDIDATE' %}
+                        <a href="/profile/" class="btn btn-outline-primary w-100 mb-2">My Profile</a>
+                        <a href="/logout/" class="btn btn-light text-danger w-100">Log Out</a>
+                    {% else %}
+                        <a href="/employers/login/" class="btn hn-btn-primary w-100 mb-2">Recruiter Workspace</a>
+                    {% endif %}
+                {% else %}
+                    <a href="/login/" class="btn btn-outline-primary w-100 mb-2">Candidate Log In</a>
+                    <a href="/register/" class="btn hn-btn-primary w-100 mb-2">Candidate Sign Up</a>
+                    <a href="/employers/login/" class="btn btn-light border w-100">Employer Log In</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Django Messages Alert Bar -->
+    {% if messages %}
+        <div class="container-xl mt-3">
+            {% for message in messages %}
+                <div class="alert alert-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% elif message.tags == 'info' %}info{% else %}success{% endif %} alert-dismissible fade show shadow-sm border-0 rounded-3" role="alert">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi {% if message.tags == 'error' %}bi-exclamation-octagon-fill text-danger{% elif message.tags == 'warning' %}bi-exclamation-triangle-fill text-warning{% else %}bi-check-circle-fill text-success{% endif %}"></i>
+                        <span>{{ message }}</span>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <!-- Main Body Content -->
+    <main class="flex-grow-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- HireNest Australia Footer -->
+    <footer class="hn-footer">
+        <div class="container-xl">
+            <div class="row g-4">
+                
+                <!-- Column 1: Brand Info -->
+                <div class="col-lg-4 col-md-6">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <div class="hn-logo-icon" style="width: 36px; height: 36px; font-size: 1.1rem;">
+                            <i class="bi bi-briefcase-fill"></i>
+                        </div>
+                        <span class="fs-4 fw-bold text-white">HireNest Australia</span>
+                    </div>
+                    <p class="text-secondary small mb-3 leading-relaxed">
+                        Australia's dedicated job portal connecting job seekers with leading companies across NSW, VIC, QLD, WA, SA, TAS, ACT, and NT.
+                    </p>
+                    <div class="d-flex gap-2">
+                        <span class="badge bg-dark border border-secondary text-light px-2.5 py-1.5"><i class="bi bi-shield-check me-1 text-info"></i>Verified Australian Employers</span>
+                        <span class="badge bg-dark border border-secondary text-light px-2.5 py-1.5"><i class="bi bi-currency-dollar me-1 text-success"></i>AUD Market Benchmarks</span>
+                    </div>
+                </div>
+
+                <!-- Column 2: Job Seekers -->
+                <div class="col-lg-2 col-md-6 col-6">
+                    <h6 class="hn-footer-heading">Job Seekers</h6>
+                    <ul class="hn-footer-links">
+                        <li><a href="/jobs/">Search All Jobs</a></li>
+                        <li><a href="/companies/">Browse Companies</a></li>
+                        <li><a href="/saved-jobs/">Saved Jobs</a></li>
+                        <li><a href="/applications/">My Applications</a></li>
+                        <li><a href="/profile/">Candidate Profile</a></li>
+                    </ul>
+                </div>
+
+                <!-- Column 3: Career & Insights -->
+                <div class="col-lg-3 col-md-6 col-6">
+                    <h6 class="hn-footer-heading">Career Insights</h6>
+                    <ul class="hn-footer-links">
+                        <li><a href="/salary-guide/">Australian Salary Guide</a></li>
+                        <li><a href="/career-advice/">Australian Resume Advice</a></li>
+                        <li><a href="/career-advice/">Interview Preparation (STAR)</a></li>
+                        <li><a href="/resources/">Resume Templates & Formats</a></li>
+                        <li><a href="/resources/">Working Rights & Superannuation</a></li>
+                    </ul>
+                </div>
+
+                <!-- Column 4: Employers -->
+                <div class="col-lg-3 col-md-6">
+                    <h6 class="hn-footer-heading">For Employers</h6>
+                    <ul class="hn-footer-links">
+                        <li><a href="/employers/">Why Hire with HireNest</a></li>
+                        <li><a href="/employers/register/">Register Employer Account</a></li>
+                        <li><a href="/employers/login/">Employer Log In</a></li>
+                        <li><a href="/employers/">Intelligent Candidate Search</a></li>
+                        <li><a href="/employers/">Recruiter Workspace Access</a></li>
+                    </ul>
+                </div>
+
+            </div>
+
+            <!-- Australian States & Major Cities Quick Links -->
+            <div class="border-top border-dark pt-3 mt-4">
+                <div class="row align-items-center">
+                    <div class="col-12 text-secondary small">
+                        <strong class="text-light me-2">Jobs by City:</strong>
+                        <a href="/jobs/?location=Sydney+NSW" class="text-secondary text-decoration-none me-3">Sydney</a>
+                        <a href="/jobs/?location=Melbourne+VIC" class="text-secondary text-decoration-none me-3">Melbourne</a>
+                        <a href="/jobs/?location=Brisbane+QLD" class="text-secondary text-decoration-none me-3">Brisbane</a>
+                        <a href="/jobs/?location=Perth+WA" class="text-secondary text-decoration-none me-3">Perth</a>
+                        <a href="/jobs/?location=Adelaide+SA" class="text-secondary text-decoration-none me-3">Adelaide</a>
+                        <a href="/jobs/?location=Gold+Coast+QLD" class="text-secondary text-decoration-none me-3">Gold Coast</a>
+                        <a href="/jobs/?location=Canberra+ACT" class="text-secondary text-decoration-none me-3">Canberra</a>
+                        <a href="/jobs/?location=Hobart+TAS" class="text-secondary text-decoration-none me-3">Hobart</a>
+                        <a href="/jobs/?location=Darwin+NT" class="text-secondary text-decoration-none me-3">Darwin</a>
+                        <a href="/jobs/?work_mode=REMOTE" class="text-secondary text-decoration-none">Remote Australia</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Bottom -->
+            <div class="hn-footer-bottom">
+                <div>
+                    &copy; 2026 HireNest Australia. All rights reserved. Operating under Australian Employment & Fair Work standards.
+                </div>
+                <div class="d-flex gap-3">
+                    <a href="/resources/" class="text-secondary text-decoration-none">Privacy Policy</a>
+                    <a href="/resources/" class="text-secondary text-decoration-none">Terms of Use</a>
+                    <a href="/resources/" class="text-secondary text-decoration-none">Fair Work Notice</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- HireNest Interactive Scripts -->
+    <script src="{% static 'js/hirenest.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,102 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}Australian Salary Guide (AUD) — HireNest Australia{% endblock %}
+
+{% block content %}
+<section class="py-5 bg-white border-bottom">
+    <div class="container-xl">
+        <div class="row justify-content-center text-center">
+            <div class="col-lg-8">
+                <span class="badge bg-success-subtle text-success border border-success-subtle fw-semibold px-2.5 py-1 mb-2">
+                    <i class="bi bi-currency-dollar me-1"></i>AUD Market Benchmarks
+                </span>
+                <h1 class="fs-1 fw-bold text-dark mb-2">Australian Salary Guide 2026</h1>
+                <p class="text-muted fs-5 mb-4">Verified salary benchmarks across major Australian industries in AUD, helping you negotiate your true market worth.</p>
+
+                <!-- Search form -->
+                <form action="/salary-guide/" method="GET">
+                    <div class="input-group shadow-sm rounded-3 overflow-hidden">
+                        <input type="text" name="q" value="{{ q }}" class="form-control form-control-lg border-end-0" placeholder="Search by job title (e.g. Software Engineer, Registered Nurse)...">
+                        <button class="btn hn-btn-primary px-4" type="submit"><i class="bi bi-search me-1"></i>Search Salaries</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-5" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+            <h2 class="fs-5 fw-bold text-dark mb-0">Australian Industry Pay Scales (AUD / Year)</h2>
+            {% if q %}
+                <a href="/salary-guide/" class="btn btn-outline-secondary btn-sm">Clear Search</a>
+            {% endif %}
+        </div>
+
+        <div class="row g-4">
+            {% for item in salaries %}
+                <div class="col-lg-6">
+                    <div class="card h-100 border rounded-4 shadow-sm p-4 bg-white">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <span class="badge bg-light text-primary border small mb-1">{{ item.category }}</span>
+                                <h3 class="fs-5 fw-bold text-dark mb-0">{{ item.role }}</h3>
+                            </div>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle fw-bold">{{ item.growth }}</span>
+                        </div>
+
+                        <!-- Salary Grid -->
+                        <div class="table-responsive my-3">
+                            <table class="table table-sm table-bordered align-middle mb-0 text-center">
+                                <thead class="table-light small text-muted">
+                                    <tr>
+                                        <th>Junior (0-2 yrs)</th>
+                                        <th>Mid (3-5 yrs)</th>
+                                        <th>Senior (6-8 yrs)</th>
+                                        <th>Lead (8+ yrs)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="fw-bold text-dark small">
+                                        <td class="py-2.5">{{ item.junior_aud }}</td>
+                                        <td class="py-2.5">{{ item.mid_aud }}</td>
+                                        <td class="py-2.5 text-primary">{{ item.senior_aud }}</td>
+                                        <td class="py-2.5 text-success">{{ item.lead_aud }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center pt-2 border-top small text-muted">
+                            <div>
+                                <span><i class="bi bi-clock me-1"></i>Avg. Hourly: <strong>{{ item.avg_hourly }}</strong></span>
+                            </div>
+                            <div class="d-flex align-items-center gap-1">
+                                <span>Top Markets:</span>
+                                {% for st in item.top_states %}
+                                    <span class="badge bg-light text-dark border">{{ st }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="mt-3 text-end">
+                            <a href="/jobs/?q={{ item.role|urlencode }}" class="btn btn-outline-primary btn-sm">
+                                Find {{ item.role }} Jobs &rarr;
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="col-12 text-center py-5">
+                    <p class="text-muted">No salary benchmarks found matching "{{ q }}".</p>
+                    <a href="/salary-guide/" class="btn hn-btn-primary">View All Benchmarks</a>
+                </div>
+            {% endfor %}
+        </div>
+
+    </div>
+</section>
+{% endblock %}

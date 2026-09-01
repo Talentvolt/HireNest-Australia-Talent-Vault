@@ -1,0 +1,76 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}Saved Jobs — HireNest Australia{% endblock %}
+
+{% block content %}
+<section class="py-4" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+            <div>
+                <span class="badge bg-primary-subtle text-primary fw-semibold px-2.5 py-1 mb-1">Bookmarked Opportunities</span>
+                <h1 class="fs-2 fw-bold text-dark mb-0">Saved Jobs</h1>
+            </div>
+            <a href="/jobs/" class="btn hn-btn-primary mt-2 mt-sm-0"><i class="bi bi-search me-1"></i>Search More Jobs</a>
+        </div>
+
+        <div class="row g-3">
+            {% for item in saved_jobs %}
+                <div class="col-lg-6">
+                    <div class="hn-job-card h-100 position-relative">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <a href="/jobs/{{ item.job.id }}/" class="hn-job-card-title text-decoration-none">
+                                    {{ item.job.title }}
+                                </a>
+                                <div class="hn-job-card-company">
+                                    <i class="bi bi-building"></i>
+                                    <span>{{ item.job.display_company }}</span>
+                                </div>
+                            </div>
+                            <button type="button" class="hn-save-btn saved" data-job-id="{{ item.job.id }}" aria-label="Remove from saved jobs" title="Remove">
+                                <i class="bi bi-heart-fill text-danger"></i>
+                            </button>
+                        </div>
+
+                        <div class="hn-job-meta-row">
+                            <span class="hn-meta-item"><i class="bi bi-geo-alt-fill text-danger"></i>{{ item.job.location }}</span>
+                            <span class="hn-badge-tag">{{ item.job.get_job_type_display }}</span>
+                            <span class="hn-salary-tag">{{ item.job.formatted_salary_display }}</span>
+                        </div>
+
+                        <div class="hn-job-desc-snippet">
+                            {{ item.job.description|truncatewords:28 }}
+                        </div>
+
+                        <div class="hn-job-footer">
+                            <span class="text-muted small">Saved {{ item.created_at|timesince }} ago</span>
+                            <div class="d-flex gap-2">
+                                <a href="/jobs/{{ item.job.id }}/" class="btn btn-outline-secondary btn-sm">View Role</a>
+                                <a href="/jobs/{{ item.job.id }}/apply/" class="btn btn-primary btn-sm fw-bold">Apply Now</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="col-12 text-center py-5">
+                    <div class="p-5 bg-white rounded-4 border">
+                        <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center p-3 mb-3" style="width: 72px; height: 72px;">
+                            <i class="bi bi-bookmark-heart fs-2 text-danger"></i>
+                        </div>
+                        <h3 class="fs-4 fw-bold text-dark mb-2">No Saved Jobs Yet</h3>
+                        <p class="text-muted max-w-500 mx-auto mb-4">
+                            Click the heart icon on any Australian job card to save it for later review and quick application.
+                        </p>
+                        <a href="/jobs/" class="btn hn-btn-primary btn-lg fw-bold px-4">
+                            Explore Active Jobs
+                        </a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+    </div>
+</section>
+{% endblock %}

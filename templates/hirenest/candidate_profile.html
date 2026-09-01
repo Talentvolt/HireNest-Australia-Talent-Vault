@@ -1,0 +1,195 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}My Profile & Resume — HireNest Australia{% endblock %}
+
+{% block content %}
+<section class="py-4" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        
+        <!-- Profile Header -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+            <div>
+                <span class="badge bg-primary-subtle text-primary fw-semibold px-2.5 py-1 mb-1">Candidate Portal</span>
+                <h1 class="fs-2 fw-bold text-dark mb-0">My Professional Profile</h1>
+            </div>
+            <div class="d-flex gap-2 mt-2 mt-sm-0">
+                <a href="/applications/" class="btn btn-outline-primary"><i class="bi bi-file-earmark-check me-1"></i>My Applications</a>
+                <a href="/saved-jobs/" class="btn btn-outline-secondary"><i class="bi bi-bookmark-heart me-1"></i>Saved Jobs</a>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            
+            <!-- Left 8 cols: Profile Editor Form -->
+            <div class="col-lg-8">
+                <div class="bg-white rounded-4 border p-4 p-md-5 shadow-sm">
+                    
+                    <form method="POST" action="/profile/" enctype="multipart/form-data">
+                        {% csrf_token %}
+
+                        <!-- Basic Details -->
+                        <h4 class="fs-5 fw-bold text-dark border-bottom pb-2 mb-3">1. Personal Information</h4>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="hn-form-label">Full Name <span class="text-danger">*</span></label>
+                                <input type="text" name="full_name" class="form-control hn-form-control" value="{{ profile.full_name|default:request.user.get_full_name }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="hn-form-label">Email Address (Read-only)</label>
+                                <input type="email" class="form-control hn-form-control bg-light" value="{{ request.user.email }}" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="hn-form-label">Australian Phone Number</label>
+                                <input type="tel" name="phone_number" class="form-control hn-form-control" value="{{ request.user.phone_number|default:'' }}" placeholder="+61 400 123 456">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="hn-form-label">Australian Location <span class="text-danger">*</span></label>
+                                <input type="text" name="location" class="form-control hn-form-control" value="{{ profile.location|default:'' }}" placeholder="e.g. Sydney NSW" list="loc-list" required>
+                                <datalist id="loc-list">
+                                    {% for loc in locations %}
+                                        <option value="{{ loc }}"></option>
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                        </div>
+
+                        <!-- Professional Role Details -->
+                        <h4 class="fs-5 fw-bold text-dark border-bottom pb-2 mb-3">2. Current Role & Salary Preferences</h4>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label class="hn-form-label">Current Designation / Role</label>
+                                <input type="text" name="current_designation" class="form-control hn-form-control" value="{{ profile.current_designation|default:'' }}" placeholder="e.g. Senior Software Engineer">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="hn-form-label">Current Employer / Company</label>
+                                <input type="text" name="current_company" class="form-control hn-form-control" value="{{ profile.current_company|default:'' }}" placeholder="e.g. Atlassian">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="hn-form-label">Total Experience (Years)</label>
+                                <input type="number" step="0.5" name="total_experience" class="form-control hn-form-control" value="{{ profile.total_experience|default:'0' }}" min="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="hn-form-label">Expected Salary (AUD / yr)</label>
+                                <input type="number" name="expected_salary" class="form-control hn-form-control" value="{{ profile.expected_salary|default:'' }}" placeholder="e.g. 135000">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="hn-form-label">Notice Period (Days)</label>
+                                <input type="number" name="notice_period" class="form-control hn-form-control" value="{{ profile.notice_period|default:'30' }}" min="0">
+                            </div>
+                        </div>
+
+                        <!-- Professional Summary -->
+                        <h4 class="fs-5 fw-bold text-dark border-bottom pb-2 mb-3">3. Professional Summary</h4>
+                        <div class="mb-4">
+                            <textarea name="summary" class="form-control hn-form-control" rows="4" placeholder="Briefly describe your career background, core competencies, and key achievements in Australia...">{{ profile.summary|default:'' }}</textarea>
+                        </div>
+
+                        <!-- Skills -->
+                        <h4 class="fs-5 fw-bold text-dark border-bottom pb-2 mb-3">4. Core Skills & Technologies</h4>
+                        <div class="mb-4">
+                            <label class="hn-form-label">Skills (Comma-separated)</label>
+                            <input 
+                                type="text" 
+                                name="skills" 
+                                class="form-control hn-form-control" 
+                                value="{% for s in profile.skills.all %}{{ s.skill_name }}{% if not forloop.last %}, {% endif %}{% endfor %}"
+                                placeholder="e.g. React, Python, AWS, SQL, Agile Project Management"
+                            >
+                            <div class="form-text small">Enter skills separated by commas to improve your automated job matching.</div>
+                        </div>
+
+                        <!-- Resume Upload -->
+                        <h4 class="fs-5 fw-bold text-dark border-bottom pb-2 mb-3">5. Australian Resume Document</h4>
+                        <div class="p-3 bg-light rounded-3 border mb-4">
+                            {% if profile.has_resume %}
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="bi bi-file-earmark-pdf-fill text-danger fs-3"></i>
+                                        <div>
+                                            <div class="fw-bold text-dark">Current Resume: {{ profile.resume.name|slice:"8:" }}</div>
+                                            <div class="text-muted small">Uploaded on HireNest Australia • {{ profile.resume_size_display }}</div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <a href="{{ profile.resume.url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                                            <i class="bi bi-eye me-1"></i>View Resume
+                                        </a>
+                                    </div>
+                                </div>
+                                <label class="hn-form-label small">Upload Updated Resume (PDF only, max 10MB):</label>
+                            {% else %}
+                                <div class="text-muted small mb-2"><i class="bi bi-info-circle me-1"></i>No Resume Uploaded / Resume not available</div>
+                                <label class="hn-form-label">Upload Your Resume (PDF only, max 10MB):</label>
+                            {% endif %}
+                            <input type="file" name="resume" class="form-control hn-form-control" accept=".pdf">
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="d-flex justify-content-end pt-3 border-top">
+                            <button type="submit" class="btn hn-btn-primary btn-lg fw-bold px-5">
+                                Save Profile Changes
+                            </button>
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+
+            <!-- Right 4 cols: Profile Strength & Quick Stats -->
+            <div class="col-lg-4">
+                
+                <!-- Profile Strength Meter -->
+                <div class="bg-white rounded-4 border p-4 shadow-sm mb-4">
+                    <h4 class="fs-6 fw-bold text-dark mb-2">Profile Completeness</h4>
+                    <div class="progress mb-2" style="height: 10px;">
+                        <div class="progress-bar bg-primary" role="progressbar" style="width: {{ profile.profile_completion_percentage }}%;" aria-valuenow="{{ profile.profile_completion_percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted mb-3">
+                        <span>{{ profile.profile_completion_percentage }}% complete</span>
+                        <span>Target: 100%</span>
+                    </div>
+
+                    <div class="small text-muted border-top pt-2">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <i class="bi {% if profile.has_resume %}bi-check-circle-fill text-success{% else %}bi-circle text-muted{% endif %}"></i>
+                            <span>Resume Uploaded</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <i class="bi {% if profile.skills.exists %}bi-check-circle-fill text-success{% else %}bi-circle text-muted{% endif %}"></i>
+                            <span>Key Skills Listed</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi {% if profile.summary %}bi-check-circle-fill text-success{% else %}bi-circle text-muted{% endif %}"></i>
+                            <span>Professional Summary Added</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Australian Career Resources -->
+                <div class="bg-white rounded-4 border p-4 shadow-sm">
+                    <h4 class="fs-6 fw-bold text-dark mb-3">Career Resources</h4>
+                    <div class="list-group list-group-flush small">
+                        <a href="/salary-guide/" class="list-group-item list-group-item-action px-0 d-flex align-items-center justify-content-between">
+                            <span><i class="bi bi-currency-dollar me-2 text-success"></i>Australian Salary Guide</span>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/career-advice/" class="list-group-item list-group-item-action px-0 d-flex align-items-center justify-content-between">
+                            <span><i class="bi bi-file-earmark-text me-2 text-primary"></i>Resume Writing Standards</span>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/resources/" class="list-group-item list-group-item-action px-0 d-flex align-items-center justify-content-between">
+                            <span><i class="bi bi-shield-check me-2 text-info"></i>Fair Work Australia Info</span>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+</section>
+{% endblock %}

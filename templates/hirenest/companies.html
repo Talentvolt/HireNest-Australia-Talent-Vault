@@ -1,0 +1,90 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}Australian Companies & Employers Directory — HireNest Australia{% endblock %}
+
+{% block content %}
+<section class="py-5 bg-white border-bottom">
+    <div class="container-xl">
+        <div class="row justify-content-center text-center">
+            <div class="col-lg-8">
+                <span class="badge bg-primary-subtle text-primary fw-semibold px-2.5 py-1 mb-2">Employer Directory</span>
+                <h1 class="fs-1 fw-bold text-dark mb-2">Discover Companies in Australia</h1>
+                <p class="text-muted fs-5 mb-4">Explore verified Australian organizations, company cultures, and current job openings.</p>
+
+                <!-- Search form -->
+                <form action="/companies/" method="GET">
+                    <div class="input-group shadow-sm rounded-3 overflow-hidden">
+                        <input type="text" name="q" value="{{ q }}" class="form-control form-control-lg border-end-0" placeholder="Search by company name, industry, or Australian city...">
+                        <button class="btn hn-btn-primary px-4" type="submit"><i class="bi bi-search me-1"></i>Search</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-5" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fs-5 fw-bold text-dark mb-0">{{ paginator.count }} Companies Hiring in Australia</h2>
+            {% if q %}
+                <a href="/companies/" class="btn btn-outline-secondary btn-sm">Clear Search</a>
+            {% endif %}
+        </div>
+
+        <div class="row g-4">
+            {% for comp in companies %}
+                <div class="col-lg-4 col-md-6">
+                    <div class="card h-100 border rounded-4 shadow-sm p-4 bg-white d-flex flex-column">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <div class="rounded-3 bg-primary bg-opacity-10 text-primary fw-bold d-flex align-items-center justify-content-center flex-shrink-0" style="width: 56px; height: 56px; font-size: 1.4rem;">
+                                {{ comp.name|slice:":1"|upper }}
+                            </div>
+                            <div class="overflow-hidden">
+                                <h3 class="fs-5 fw-bold text-dark mb-0 text-truncate">{{ comp.name }}</h3>
+                                <div class="text-muted small text-truncate"><i class="bi bi-geo-alt me-1 text-danger"></i>{{ comp.location }}</div>
+                            </div>
+                        </div>
+
+                        <p class="text-muted small mb-3 flex-grow-1">
+                            {{ comp.description|truncatewords:24 }}
+                        </p>
+
+                        <div class="d-flex align-items-center justify-content-between pt-3 border-top mt-auto">
+                            <span class="badge bg-primary-subtle text-primary">{{ comp.active_jobs_count }} active roles</span>
+                            <a href="/companies/{{ comp.slug }}/" class="btn btn-outline-primary btn-sm fw-semibold">
+                                View Profile & Jobs &rarr;
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="col-12 text-center py-5">
+                    <p class="text-muted">No companies found matching "{{ q }}".</p>
+                    <a href="/companies/" class="btn hn-btn-primary">View All Companies</a>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        {% if is_paginated %}
+            <nav class="mt-5">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item"><a class="page-link" href="?q={{ q }}&page={{ page_obj.previous_page_number }}">&larr; Previous</a></li>
+                    {% endif %}
+                    {% for num in paginator.page_range %}
+                        <li class="page-item {% if page_obj.number == num %}active{% endif %}"><a class="page-link" href="?q={{ q }}&page={{ num }}">{{ num }}</a></li>
+                    {% endfor %}
+                    {% if page_obj.has_next %}
+                        <li class="page-item"><a class="page-link" href="?q={{ q }}&page={{ page_obj.next_page_number }}">Next &rarr;</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        {% endif %}
+
+    </div>
+</section>
+{% endblock %}

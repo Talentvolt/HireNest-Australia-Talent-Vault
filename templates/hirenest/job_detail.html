@@ -1,0 +1,238 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}{{ job.title }} at {{ job.display_company }} — HireNest Australia{% endblock %}
+{% block meta_description %}{{ job.title }} job opening at {{ job.display_company }} in {{ job.location }}. {{ job.formatted_salary_display }}. Apply directly on HireNest Australia.{% endblock %}
+
+{% block content %}
+<section class="py-4" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        
+        <!-- Breadcrumbs -->
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb small">
+                <li class="breadcrumb-item"><a href="/" class="text-decoration-none text-muted">Home</a></li>
+                <li class="breadcrumb-item"><a href="/jobs/" class="text-decoration-none text-muted">Jobs in Australia</a></li>
+                <li class="breadcrumb-item active text-dark fw-semibold" aria-current="page">{{ job.title }}</li>
+            </ol>
+        </nav>
+
+        <div class="row g-4">
+            
+            <!-- MAIN CONTENT (Left 8 cols) -->
+            <div class="col-lg-8">
+                
+                <!-- Job Header Card -->
+                <div class="hn-detail-header-card">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="badge bg-primary-subtle text-primary fw-semibold px-2.5 py-1">{{ job.get_job_type_display }}</span>
+                                <span class="badge bg-light text-secondary border fw-semibold px-2.5 py-1">{{ job.get_work_mode_display }}</span>
+                                {% if job.is_australia_job %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle fw-semibold px-2.5 py-1"><i class="bi bi-geo-alt me-1"></i>Australia</span>
+                                {% endif %}
+                            </div>
+                            <h1 class="fs-2 fw-bold text-dark mb-1">{{ job.title }}</h1>
+                            <div class="fs-5 fw-semibold text-primary d-flex align-items-center gap-2">
+                                <i class="bi bi-building"></i>
+                                <span>{{ job.display_company }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Top Save & Share Actions -->
+                        <div class="d-flex gap-2">
+                            <button 
+                                type="button" 
+                                class="btn btn-outline-secondary btn-sm hn-save-btn {% if is_saved %}saved{% endif %} p-2 px-2.5" 
+                                data-job-id="{{ job.id }}" 
+                                aria-label="Save Job" 
+                                title="Save Job"
+                            >
+                                <i class="bi {% if is_saved %}bi-heart-fill text-danger{% else %}bi-heart{% endif %} fs-6"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm hn-share-btn p-2 px-2.5" data-url="{{ share_url }}" title="Share this job">
+                                <i class="bi bi-share-fill fs-6"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Meta details pills -->
+                    <div class="row g-3 py-3 my-2 border-top border-bottom">
+                        <div class="col-sm-4 col-6">
+                            <div class="text-muted small">Location</div>
+                            <div class="fw-bold text-dark"><i class="bi bi-geo-alt-fill text-danger me-1"></i>{{ job.location }}</div>
+                        </div>
+                        <div class="col-sm-4 col-6">
+                            <div class="text-muted small">Salary Benchmark</div>
+                            <div class="fw-bold text-success">{{ job.formatted_salary_display }}</div>
+                        </div>
+                        <div class="col-sm-4 col-12">
+                            <div class="text-muted small">Experience Level</div>
+                            <div class="fw-bold text-dark">{{ job.min_experience }} - {{ job.max_experience }} years</div>
+                        </div>
+                    </div>
+
+                    <!-- Main Apply CTA Bar -->
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 pt-2">
+                        <div class="text-muted small">
+                            <i class="bi bi-calendar3 me-1"></i>Posted {{ job.created_at|timesince }} ago
+                            {% if job.application_deadline %}
+                                • Closes {{ job.application_deadline|date:"d M Y" }}
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            {% if has_applied %}
+                                <button class="btn btn-success disabled fw-bold py-2.5 px-4">
+                                    <i class="bi bi-check-circle-fill me-1"></i>Application Submitted
+                                </button>
+                            {% else %}
+                                <a href="/jobs/{{ job.id }}/apply/" class="btn hn-btn-primary fw-bold py-2.5 px-4 shadow">
+                                    <i class="bi bi-send-fill me-1"></i>Apply for this Role
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Job Full Content Card -->
+                <div class="hn-detail-body-card">
+                    
+                    <!-- Overview & Description -->
+                    <div class="hn-content-block">
+                        <h3 class="fs-4 fw-bold text-dark border-bottom pb-2 mb-3">About the Role</h3>
+                        <div class="text-dark leading-relaxed" style="white-space: pre-line; font-size: 1.02rem;">
+                            {{ job.description }}
+                        </div>
+                    </div>
+
+                    <!-- Skills Matrix -->
+                    {% if job.get_required_skills_list or job.get_preferred_skills_list %}
+                        <div class="mt-4 pt-3 border-top">
+                            <h3 class="fs-5 fw-bold text-dark mb-3">Key Skills & Requirements</h3>
+                            
+                            {% if job.get_required_skills_list %}
+                                <div class="mb-3">
+                                    <div class="fw-bold text-secondary small mb-2 text-uppercase">Mandatory Skills:</div>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        {% for skill in job.get_required_skills_list %}
+                                            <span class="badge bg-primary text-white py-2 px-3 fw-medium" style="font-size: 0.88rem;">{{ skill }}</span>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            {% endif %}
+
+                            {% if job.get_preferred_skills_list %}
+                                <div>
+                                    <div class="fw-bold text-secondary small mb-2 text-uppercase">Desirable Skills:</div>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        {% for skill in job.get_preferred_skills_list %}
+                                            <span class="badge bg-light text-dark border py-2 px-3 fw-medium" style="font-size: 0.88rem;">{{ skill }}</span>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+
+                    <!-- Attached Job Description Document (if exists) -->
+                    {% if jd_file %}
+                        <div class="mt-4 pt-3 border-top">
+                            <h3 class="fs-5 fw-bold text-dark mb-2">Job Description Document</h3>
+                            <div class="p-3 bg-light rounded-3 border d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="bi {% if is_pdf %}bi-file-earmark-pdf-fill text-danger{% else %}bi-file-earmark-word-fill text-primary{% endif %} fs-3"></i>
+                                    <div>
+                                        <div class="fw-bold text-dark">{{ jd_file_name }}</div>
+                                        <div class="text-muted small">Official Employer Job Description File</div>
+                                    </div>
+                                </div>
+                                <a href="{{ jd_file.url }}" target="_blank" class="btn btn-outline-primary btn-sm">
+                                    <i class="bi bi-download me-1"></i>Download JD
+                                </a>
+                            </div>
+                        </div>
+                    {% endif %}
+
+                    <!-- Bottom Apply Prompt -->
+                    <div class="mt-5 pt-4 border-top text-center bg-light p-4 rounded-3">
+                        <h4 class="fw-bold text-dark mb-1">Ready to Take the Next Step?</h4>
+                        <p class="text-muted small mb-3">Submit your application directly to the hiring team at {{ job.display_company }}.</p>
+                        {% if has_applied %}
+                            <span class="badge bg-success py-2 px-3 fs-6"><i class="bi bi-check-circle me-1"></i>Applied on HireNest</span>
+                        {% else %}
+                            <a href="/jobs/{{ job.id }}/apply/" class="btn hn-btn-primary btn-lg fw-bold px-5">
+                                Apply Now
+                            </a>
+                        {% endif %}
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- SIDEBAR (Right 4 cols) -->
+            <div class="col-lg-4">
+                
+                <!-- Employer Summary Card -->
+                <div class="hn-detail-sidebar-card">
+                    <h4 class="fs-6 fw-bold text-uppercase text-secondary letter-spacing-1 mb-3">About the Employer</h4>
+                    
+                    <div class="d-flex align-items-center gap-3 mb-3">
+                        <div class="rounded-3 bg-primary bg-opacity-10 text-primary fw-bold d-flex align-items-center justify-content-center" style="width: 52px; height: 52px; font-size: 1.4rem;">
+                            {{ job.display_company|slice:":1"|upper }}
+                        </div>
+                        <div>
+                            <h3 class="fs-5 fw-bold text-dark mb-0">{{ job.display_company }}</h3>
+                            <div class="text-muted small">{{ job.company.industry|default:'Australian Business' }}</div>
+                        </div>
+                    </div>
+
+                    <p class="text-muted small mb-3">
+                        {{ job.company.description|default:'Leading organization committed to building high-performing teams across Australia.'|truncatewords:30 }}
+                    </p>
+
+                    <div class="border-top pt-3 small text-muted">
+                        <div class="mb-1"><i class="bi bi-geo-alt me-2 text-danger"></i>{{ job.company.location|default:job.location }}</div>
+                        {% if job.company.website %}
+                            <div class="mb-1"><i class="bi bi-globe me-2 text-primary"></i><a href="{{ job.company.website }}" target="_blank" rel="noopener" class="text-decoration-none">{{ job.company.website }}</a></div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Australian Hiring Guidelines Notice -->
+                <div class="hn-detail-sidebar-card bg-light border-0">
+                    <div class="d-flex gap-2.5">
+                        <i class="bi bi-shield-check fs-4 text-primary"></i>
+                        <div>
+                            <h4 class="fs-6 fw-bold text-dark mb-1">Australian Fair Work Guarantee</h4>
+                            <p class="text-secondary small mb-0">
+                                This role adheres to Australian National Employment Standards (NES) and verified wage benchmarks.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Similar Jobs Sidebar -->
+                {% if similar_jobs %}
+                    <div class="hn-detail-sidebar-card">
+                        <h4 class="fs-6 fw-bold text-dark mb-3">Similar Opportunities in Australia</h4>
+                        <div class="d-flex flex-column gap-3">
+                            {% for sjob in similar_jobs %}
+                                <a href="/jobs/{{ sjob.id }}/" class="text-decoration-none text-dark p-2 rounded-2 hover-bg-light border-bottom pb-2">
+                                    <div class="fw-bold text-dark text-truncate">{{ sjob.title }}</div>
+                                    <div class="text-primary small">{{ sjob.display_company }} • {{ sjob.location }}</div>
+                                    <div class="text-success small fw-semibold">{{ sjob.formatted_salary_display }}</div>
+                                </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+            </div>
+
+        </div>
+    </div>
+</section>
+{% endblock %}

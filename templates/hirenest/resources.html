@@ -1,0 +1,73 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}Australian Job Seeker Resources & Templates — HireNest Australia{% endblock %}
+
+{% block content %}
+<section class="py-5 bg-white border-bottom">
+    <div class="container-xl">
+        <div class="row justify-content-center text-center">
+            <div class="col-lg-8">
+                <span class="badge bg-primary-subtle text-primary fw-semibold px-2.5 py-1 mb-2">Tools & Downloads</span>
+                <h1 class="fs-1 fw-bold text-dark mb-2">Job Seeker Resources & Templates</h1>
+                <p class="text-muted fs-5 mb-0">Free ATS-compliant resume templates, cover letter frameworks, and Australian workplace rights reference guides.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-5" style="background-color: var(--hn-bg-light);">
+    <div class="container-xl">
+        
+        <div class="row g-4">
+            {% for item in resources %}
+                <div class="col-lg-4 col-md-6">
+                    <div class="card h-100 border rounded-4 shadow-sm p-4 bg-white d-flex flex-column">
+                        <div class="d-flex align-items-center justify-content-between mb-3">
+                            <span class="badge bg-light text-secondary border">{{ item.category }}</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle">{{ item.badge }}</span>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <div class="rounded-3 bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px; font-size: 1.3rem;">
+                                <i class="bi {{ item.icon }}"></i>
+                            </div>
+                            <h3 class="fs-5 fw-bold text-dark mb-0">{{ item.title }}</h3>
+                        </div>
+
+                        <p class="text-muted small leading-relaxed mb-4 flex-grow-1">
+                            {{ item.description }}
+                        </p>
+
+                        <div class="pt-3 border-top mt-auto d-flex justify-content-between align-items-center">
+                            <span class="text-muted small"><i class="bi bi-file-earmark-check me-1"></i>Free Access</span>
+                            <a href="/career-advice/" class="btn btn-outline-primary btn-sm fw-semibold">
+                                View Guide &rarr;
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- Fair Work Australia Guidelines Notice -->
+        <div class="bg-white rounded-4 border p-4 mt-5">
+            <div class="row align-items-center g-3">
+                <div class="col-md-8">
+                    <div class="d-flex align-items-center gap-3">
+                        <i class="bi bi-shield-check fs-1 text-primary"></i>
+                        <div>
+                            <h4 class="fs-5 fw-bold text-dark mb-1">National Employment Standards (NES) in Australia</h4>
+                            <p class="text-muted small mb-0">Learn about minimum leave entitlements, notice periods, maximum weekly hours, and compulsory employer superannuation contributions under Australian law.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <a href="/career-advice/" class="btn hn-btn-outline">Read Full Legal Overview</a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+{% endblock %}
