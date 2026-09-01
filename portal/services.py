@@ -1,10 +1,16 @@
 """
-HireNest Australia Localization and Services Module.
-Provides Australian employment classifications, states, major cities,
-salary benchmarks in AUD, career guides, and search filtering helpers.
+HireNest Australia Localization, Marketplace Filtering & Candidate Services.
+Provides:
+- Australia-only marketplace QuerySet filtering
+- Australian employment classifications, states, cities, and locations
+- Australian salary benchmarks in AUD, career guides, and candidate resources
+- Candidate recommendation and preference matching engine
 """
+import re
 from decimal import Decimal
-from django.db.models import Q
+from typing import List, Dict, Any, Optional
+from django.db.models import Q, QuerySet, Case, When, Value, IntegerField
+from apps.jobs.models import Job
 
 AUSTRALIAN_STATES = [
     {"code": "NSW", "name": "New South Wales"},
@@ -16,6 +22,8 @@ AUSTRALIAN_STATES = [
     {"code": "ACT", "name": "Australian Capital Territory"},
     {"code": "NT", "name": "Northern Territory"},
 ]
+
+AU_STATE_CODES = [s["code"] for s in AUSTRALIAN_STATES]
 
 POPULAR_CITIES = [
     {
@@ -63,42 +71,324 @@ POPULAR_CITIES = [
 ]
 
 POPULAR_SEARCH_CHIPS = [
-    {"label": "Accounts", "query": "Accounts"},
-    {"label": "Nursing", "query": "Nursing"},
-    {"label": "Customer Service", "query": "Customer Service"},
-    {"label": "Engineer", "query": "Engineer"},
-    {"label": "Teacher", "query": "Teacher"},
-    {"label": "Developer", "query": "Developer"},
+    {"label": "Software Engineer", "query": "Software Engineer"},
+    {"label": "Nursing & Healthcare", "query": "Nursing"},
+    {"label": "Accounting & Finance", "query": "Accounting"},
+    {"label": "Civil Engineering", "query": "Engineer"},
     {"label": "Project Manager", "query": "Project Manager"},
-    {"label": "Marketing", "query": "Marketing"},
+    {"label": "Customer Service", "query": "Customer Service"},
+    {"label": "Electrician & Trades", "query": "Electrician"},
+    {"label": "Marketing Specialist", "query": "Marketing"},
 ]
 
 POPULAR_AU_LOCATIONS = [
     "Sydney NSW", "Melbourne VIC", "Brisbane QLD", "Perth WA",
     "Adelaide SA", "Gold Coast QLD", "Canberra ACT", "Newcastle NSW",
     "Wollongong NSW", "Hobart TAS", "Darwin NT", "Geelong VIC",
-    "Sunshine Coast QLD", "Townsville QLD", "Cairns QLD", "Remote Australia"
+    "Sunshine Coast QLD", "Townsville QLD", "Cairns QLD", "Remote • Australia"
+]
+
+ALL_AUSTRALIAN_LOCATIONS = [
+    {"name": "Sydney", "state": "NSW", "label": "Sydney NSW", "category": "Major City"},
+    {"name": "Melbourne", "state": "VIC", "label": "Melbourne VIC", "category": "Major City"},
+    {"name": "Brisbane", "state": "QLD", "label": "Brisbane QLD", "category": "Major City"},
+    {"name": "Perth", "state": "WA", "label": "Perth WA", "category": "Major City"},
+    {"name": "Adelaide", "state": "SA", "label": "Adelaide SA", "category": "Major City"},
+    {"name": "Canberra", "state": "ACT", "label": "Canberra ACT", "category": "Capital City"},
+    {"name": "Hobart", "state": "TAS", "label": "Hobart TAS", "category": "Capital City"},
+    {"name": "Darwin", "state": "NT", "label": "Darwin NT", "category": "Capital City"},
+    {"name": "Gold Coast", "state": "QLD", "label": "Gold Coast QLD", "category": "Regional Hub"},
+    {"name": "Newcastle", "state": "NSW", "label": "Newcastle NSW", "category": "Regional Hub"},
+    {"name": "Wollongong", "state": "NSW", "label": "Wollongong NSW", "category": "Regional Hub"},
+    {"name": "Sunshine Coast", "state": "QLD", "label": "Sunshine Coast QLD", "category": "Regional Hub"},
+    {"name": "Geelong", "state": "VIC", "label": "Geelong VIC", "category": "Regional Hub"},
+    {"name": "Townsville", "state": "QLD", "label": "Townsville QLD", "category": "Regional Hub"},
+    {"name": "Cairns", "state": "QLD", "label": "Cairns QLD", "category": "Regional Hub"},
+    {"name": "Toowoomba", "state": "QLD", "label": "Toowoomba QLD", "category": "Regional Hub"},
+    {"name": "Ballarat", "state": "VIC", "label": "Ballarat VIC", "category": "Regional Hub"},
+    {"name": "Bendigo", "state": "VIC", "label": "Bendigo VIC", "category": "Regional Hub"},
+    {"name": "Albury-Wodonga", "state": "NSW", "label": "Albury-Wodonga NSW/VIC", "category": "Regional Hub"},
+    {"name": "Launceston", "state": "TAS", "label": "Launceston TAS", "category": "Regional Hub"},
+    {"name": "Central Coast", "state": "NSW", "label": "Central Coast NSW", "category": "Regional Hub"},
+    {"name": "Mackay", "state": "QLD", "label": "Mackay QLD", "category": "Regional Hub"},
+    {"name": "Rockhampton", "state": "QLD", "label": "Rockhampton QLD", "category": "Regional Hub"},
+    {"name": "Bunbury", "state": "WA", "label": "Bunbury WA", "category": "Regional Hub"},
+    {"name": "Remote", "state": "Australia", "label": "Remote • Australia", "category": "Remote"},
 ]
 
 AUSTRALIAN_CLASSIFICATIONS = [
-    {"name": "Healthcare & Medical", "icon": "bi-heart-pulse-fill", "badge": "High Demand", "roles_count": "2,400+"},
-    {"name": "IT & Software Development", "icon": "bi-code-slash", "badge": "Top Remuneration", "roles_count": "3,150+"},
-    {"name": "Construction & Trades", "icon": "bi-tools", "badge": "Booming Sector", "roles_count": "1,890+"},
-    {"name": "Education & Training", "icon": "bi-mortarboard-fill", "badge": "Growing Demand", "roles_count": "1,240+"},
-    {"name": "Accounting & Finance", "icon": "bi-cash-coin", "badge": "Essential", "roles_count": "1,650+"},
-    {"name": "Sales & Relationship Management", "icon": "bi-graph-up-arrow", "badge": "Competitive", "roles_count": "1,420+"},
-    {"name": "Hospitality & Tourism", "icon": "bi-cup-hot-fill", "badge": "Expanding", "roles_count": "980+"},
-    {"name": "Mining, Energy & Resources", "icon": "bi-gem", "badge": "Top Earning", "roles_count": "870+"},
-    {"name": "Administration & Office Support", "icon": "bi-folder2-open", "badge": "Immediate Start", "roles_count": "1,120+"},
-    {"name": "Marketing & Communications", "icon": "bi-megaphone-fill", "badge": "Creative", "roles_count": "790+"},
-    {"name": "Engineering", "icon": "bi-gear-wide-connected", "badge": "Critical Skill", "roles_count": "1,310+"},
-    {"name": "Human Resources & Recruitment", "icon": "bi-people-fill", "badge": "Steady Growth", "roles_count": "640+"},
+    {
+        "id": "ict",
+        "name": "IT & Software Development",
+        "icon": "bi-code-slash",
+        "badge": "Top Remuneration",
+        "roles_count": "3,150+",
+        "popular_roles": ["Software Engineer", "Frontend Developer", "DevOps Engineer", "Cloud Architect", "Data Engineer", "Python Developer"]
+    },
+    {
+        "id": "healthcare",
+        "name": "Healthcare & Medical",
+        "icon": "bi-heart-pulse-fill",
+        "badge": "High Demand",
+        "roles_count": "2,400+",
+        "popular_roles": ["Registered Nurse", "Clinical Specialist", "Physiotherapist", "General Practitioner", "Occupational Therapist", "Aged Care"]
+    },
+    {
+        "id": "finance",
+        "name": "Accounting & Finance",
+        "icon": "bi-cash-coin",
+        "badge": "Essential",
+        "roles_count": "1,650+",
+        "popular_roles": ["Financial Accountant (CPA)", "Management Accountant", "Financial Analyst", "Payroll Officer", "Audit Senior"]
+    },
+    {
+        "id": "engineering",
+        "name": "Engineering",
+        "icon": "bi-gear-wide-connected",
+        "badge": "Critical Skill",
+        "roles_count": "1,310+",
+        "popular_roles": ["Civil Engineer", "Project Engineer", "Mechanical Engineer", "Electrical Engineer", "Structural Engineer"]
+    },
+    {
+        "id": "construction",
+        "name": "Construction & Trades",
+        "icon": "bi-tools",
+        "badge": "Booming Sector",
+        "roles_count": "1,890+",
+        "popular_roles": ["Site Supervisor", "Licensed Electrician", "Carpenter", "Plumber", "HVAC Technician", "Construction Manager"]
+    },
+    {
+        "id": "sales",
+        "name": "Sales & Customer Service",
+        "icon": "bi-graph-up-arrow",
+        "badge": "Competitive",
+        "roles_count": "1,420+",
+        "popular_roles": ["Account Executive", "Business Development Manager", "Customer Success Specialist", "Sales Representative"]
+    },
+    {
+        "id": "education",
+        "name": "Education & Training",
+        "icon": "bi-mortarboard-fill",
+        "badge": "Growing Demand",
+        "roles_count": "1,240+",
+        "popular_roles": ["Secondary Teacher", "Primary Teacher", "Early Childhood Educator", "Vocational Trainer", "Lecturer"]
+    },
+    {
+        "id": "mining",
+        "name": "Mining, Energy & Resources",
+        "icon": "bi-gem",
+        "badge": "Top Earning",
+        "roles_count": "870+",
+        "popular_roles": ["Mining Engineer", "Geologist", "Plant Operator", "Health & Safety (WHS)", "Operations Supervisor"]
+    },
+    {
+        "id": "admin",
+        "name": "Administration & Office Support",
+        "icon": "bi-folder2-open",
+        "badge": "Immediate Start",
+        "roles_count": "1,120+",
+        "popular_roles": ["Executive Assistant", "Office Manager", "Receptionist", "Operations Coordinator", "Data Entry"]
+    },
+    {
+        "id": "marketing",
+        "name": "Marketing & Communications",
+        "icon": "bi-megaphone-fill",
+        "badge": "Creative",
+        "roles_count": "790+",
+        "popular_roles": ["Digital Marketing Specialist", "Content Strategist", "SEO/SEM Manager", "Brand Manager", "Social Media Manager"]
+    },
+    {
+        "id": "hospitality",
+        "name": "Hospitality & Tourism",
+        "icon": "bi-cup-hot-fill",
+        "badge": "Expanding",
+        "roles_count": "980+",
+        "popular_roles": ["Head Chef", "Restaurant Manager", "Duty Manager", "Barista", "Event Coordinator"]
+    },
+    {
+        "id": "hr",
+        "name": "Human Resources & Recruitment",
+        "icon": "bi-people-fill",
+        "badge": "Steady Growth",
+        "roles_count": "640+",
+        "popular_roles": ["HR Business Partner", "Talent Acquisition Specialist", "People & Culture Lead", "Recruitment Consultant"]
+    },
 ]
 
+AU_EMPLOYMENT_TYPES = [
+    {"code": "FULL_TIME", "label": "Full-time", "badge": "Permanent"},
+    {"code": "PART_TIME", "label": "Part-time", "badge": "Flexible"},
+    {"code": "CONTRACT", "label": "Contract", "badge": "Fixed Term"},
+    {"code": "CASUAL", "label": "Casual", "badge": "+25% Loading"},
+    {"code": "TEMPORARY", "label": "Temporary", "badge": "Short Term"},
+    {"code": "INTERNSHIP", "label": "Internship", "badge": "Entry"},
+    {"code": "GRADUATE", "label": "Graduate", "badge": "Program"},
+    {"code": "REMOTE", "label": "Remote", "badge": "Anywhere in AU"},
+]
+
+# ==============================================================================
+# 1. AUSTRALIA MARKETPLACE BACKEND FILTERING (SERVER-SIDE ENFORCEMENT)
+# ==============================================================================
+def get_australian_jobs_queryset() -> QuerySet:
+    """
+    CRITICAL: Returns an active Job QuerySet strictly restricted to the Australia marketplace.
+    Enforces server-side filtering:
+    1. Includes jobs with currency='AUD'
+    2. Includes jobs with Australian location tags (States, Cities, 'Australia')
+    3. Excludes jobs with INR currency or explicit Indian/International cities.
+    """
+    au_cities = [
+        'Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Gold Coast',
+        'Canberra', 'Newcastle', 'Wollongong', 'Geelong', 'Hobart', 'Darwin',
+        'Townsville', 'Cairns', 'Toowoomba', 'Ballarat', 'Bendigo', 'Launceston',
+        'Sunshine Coast', 'Central Coast', 'Albury', 'Wodonga', 'Mackay', 'Rockhampton'
+    ]
+
+    au_location_q = (
+        Q(location__icontains='Australia') |
+        Q(location__icontains='Remote Australia') |
+        Q(location__icontains='Remote • Australia') |
+        Q(location__icontains='Remote - Australia')
+    )
+
+    for state in AU_STATE_CODES:
+        au_location_q |= (
+            Q(location__icontains=f" {state}") |
+            Q(location__icontains=f",{state}") |
+            Q(location__icontains=f", {state}") |
+            Q(location__endswith=state)
+        )
+
+    for city in au_cities:
+        au_location_q |= Q(location__icontains=city)
+
+    # General inclusion: Currency AUD or recognized Australian location
+    base_au_q = Q(currency='AUD') | au_location_q
+
+    qs = Job.objects.filter(status='ACTIVE').filter(base_au_q).select_related('company')
+
+    # Strict exclusion of international hubs unless clearly flagged Australia
+    non_au_terms = [
+        'India', 'Bangalore', 'Bengaluru', 'Mumbai', 'Delhi', 'Hyderabad',
+        'Pune', 'Chennai', 'Noida', 'Gurgaon', 'Kolkata', 'United States',
+        'USA', 'United Kingdom', 'London', 'New York'
+    ]
+    for term in non_au_terms:
+        qs = qs.exclude(Q(location__icontains=term) & ~Q(location__icontains='Australia'))
+
+    # Exclude INR jobs unless location is explicitly Australia
+    qs = qs.exclude(Q(currency='INR') & ~Q(location__icontains='Australia'))
+
+    return qs
+
+
+def normalize_australian_location(raw_loc: str) -> str:
+    """
+    Normalizes a location string to clean Australian standard format.
+    Example: 'sydney' -> 'Sydney NSW', 'remote' -> 'Remote • Australia'
+    """
+    if not raw_loc:
+        return "Australia"
+
+    val = raw_loc.strip()
+    val_upper = val.upper()
+
+    if 'REMOTE' in val_upper:
+        return "Remote • Australia"
+
+    for city in POPULAR_CITIES:
+        if city['name'].upper() in val_upper:
+            return f"{city['name']}, {city['state']}"
+
+    for state in AUSTRALIAN_STATES:
+        if state['code'] in val_upper or state['name'].upper() in val_upper:
+            return f"{val} {state['code']}" if state['code'] not in val else val
+
+    return val
+
+
+# ==============================================================================
+# 2. CANDIDATE JOB MATCHING & RECOMMENDATION ENGINE
+# ==============================================================================
+def get_candidate_recommended_jobs(candidate_profile, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Personalizes Australian jobs for a candidate based on:
+    - Preferred work category (Question 1)
+    - Preferred location / Remote preference (Question 2)
+    - Preferred employment type (Question 3)
+    - Skills and experience
+    Returns prioritized list of jobs with match score and reasons.
+    """
+    base_qs = get_australian_jobs_queryset()
+
+    if not candidate_profile:
+        return list(base_qs.order_by('-created_at')[:limit])
+
+    pref_dept = getattr(candidate_profile, 'department', '') or ''
+    pref_role = getattr(candidate_profile, 'preferred_job_role', '') or ''
+    pref_loc = getattr(candidate_profile, 'preferred_location', '') or getattr(candidate_profile, 'location', '') or ''
+    pref_emp = getattr(candidate_profile, 'employment_type', '') or ''
+
+    # Get skills
+    skills = list(candidate_profile.skills.values_list('skill_name', flat=True))
+    if not skills and getattr(candidate_profile, 'ai_skills', None):
+        skills = candidate_profile.ai_skills if isinstance(candidate_profile.ai_skills, list) else []
+
+    scored_jobs = []
+    for job in base_qs[:100]:
+        score = 0
+        match_reasons = []
+
+        # 1. Classification / Department match (+35 points)
+        if pref_dept and (pref_dept.lower() in (job.department or '').lower() or pref_dept.lower() in (job.company.industry or '').lower()):
+            score += 35
+            match_reasons.append(f"Matches category: {pref_dept}")
+        elif pref_role and (pref_role.lower() in job.title.lower()):
+            score += 35
+            match_reasons.append(f"Matches role: {pref_role}")
+
+        # 2. Location match (+30 points)
+        if 'REMOTE' in pref_loc.upper() and (job.work_mode == 'REMOTE' or job.is_remote or 'REMOTE' in job.location.upper()):
+            score += 30
+            match_reasons.append("Remote match")
+        elif pref_loc and any(term.lower() in job.location.lower() for term in pref_loc.split(',') if term.strip()):
+            score += 30
+            match_reasons.append(f"Location match: {job.location}")
+
+        # 3. Employment type match (+20 points)
+        if pref_emp and pref_emp == job.job_type:
+            score += 20
+            match_reasons.append("Employment type match")
+
+        # 4. Skills match (+15 points)
+        job_skills = [s.lower() for s in job.get_required_skills_list + job.get_preferred_skills_list]
+        matched_skills = [s for s in skills if s.lower() in job_skills]
+        if matched_skills:
+            score += min(20, len(matched_skills) * 5)
+            match_reasons.append(f"Matched {len(matched_skills)} skills")
+
+        is_recommended = score >= 30
+        scored_jobs.append({
+            'job': job,
+            'score': score,
+            'is_recommended': is_recommended,
+            'match_reasons': match_reasons,
+        })
+
+    # Sort descending by score, then date
+    scored_jobs.sort(key=lambda x: (x['score'], x['job'].created_at), reverse=True)
+
+    # Return top matches
+    return [item['job'] for item in scored_jobs[:limit]]
+
+
+# ==============================================================================
+# 3. SALARY BENCHMARKS & CAREER RESOURCES DATA
+# ==============================================================================
 AU_SALARY_BENCHMARKS = [
     {
         "role": "Senior Software Engineer",
-        "category": "Information Technology",
+        "category": "IT & Software Development",
         "junior_aud": "$85,000 - $105,000",
         "mid_aud": "$120,000 - $155,000",
         "senior_aud": "$160,000 - $200,000",

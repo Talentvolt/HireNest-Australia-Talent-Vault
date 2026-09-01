@@ -11,6 +11,12 @@ from .views import (
     HirenestCandidateApplicationsView,
     HirenestCandidateSavedJobsView,
     HirenestToggleSaveJobView,
+    CandidateSendOTPView,
+    CandidateVerifyOTPView,
+    CandidateSocialAuthView,
+    CandidateOnboardingView,
+    AustralianLocationsLookupView,
+    HirenestCandidateDashboardView,
     HirenestEmployerLandingView,
     HirenestEmployerRegisterView,
     HirenestEmployerLoginView,
@@ -31,7 +37,15 @@ urlpatterns = [
     path('jobs/<uuid:pk>/apply/', HirenestJobApplyView.as_view(), name='job_apply'),
     path('jobs/saved/toggle/', HirenestToggleSaveJobView.as_view(), name='toggle_saved_job'),
 
-    # Candidate Authentication & Management
+    # Candidate AJAX Authentication & OTP Endpoints
+    path('auth/send-otp/', CandidateSendOTPView.as_view(), name='candidate_send_otp'),
+    path('auth/verify-otp/', CandidateVerifyOTPView.as_view(), name='candidate_verify_otp'),
+    path('auth/social/', CandidateSocialAuthView.as_view(), name='candidate_social_auth'),
+    path('api/onboarding/', CandidateOnboardingView.as_view(), name='candidate_onboarding'),
+    path('api/locations/', AustralianLocationsLookupView.as_view(), name='locations_lookup'),
+
+    # Candidate Dashboard & Management
+    path('dashboard/', HirenestCandidateDashboardView.as_view(), name='candidate_dashboard'),
     path('register/', HirenestCandidateRegisterView.as_view(), name='candidate_register'),
     path('login/', HirenestCandidateLoginView.as_view(), name='candidate_login'),
     path('logout/', HirenestCandidateLogoutView.as_view(), name='candidate_logout'),

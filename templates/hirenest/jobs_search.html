@@ -223,10 +223,22 @@
 
                 <!-- Job Cards List -->
                 {% for job in jobs %}
-                    <a href="/jobs/{{ job.id }}/" class="hn-job-card">
+                    <div class="hn-job-card position-relative mb-3">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
-                                <h3 class="hn-job-card-title">{{ job.title }}</h3>
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    {% if job.id in recommended_job_ids %}
+                                        <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill px-2.5 py-0.5 small fw-bold">
+                                            <i class="bi bi-star-fill text-warning me-1"></i>Recommended for you
+                                        </span>
+                                    {% endif %}
+                                    <span class="badge bg-light text-muted border rounded-pill px-2 py-0.5 small">
+                                        <i class="bi bi-shield-check text-primary me-1"></i>Australia
+                                    </span>
+                                </div>
+                                <h3 class="hn-job-card-title mb-1">
+                                    <a href="/jobs/{{ job.id }}/" class="text-dark text-decoration-none hover-primary">{{ job.title }}</a>
+                                </h3>
                                 <div class="hn-job-card-company">
                                     <i class="bi bi-building"></i>
                                     <span>{{ job.display_company }}</span>
@@ -234,27 +246,33 @@
                             </div>
                             <button 
                                 type="button" 
-                                class="hn-save-btn {% if job.id in saved_job_ids %}saved{% endif %}" 
+                                class="btn btn-light btn-sm rounded-circle p-2 hn-btn-save-job hn-save-btn {% if job.id in saved_job_ids %}saved active text-danger{% endif %}" 
                                 data-job-id="{{ job.id }}" 
                                 aria-label="Save Job"
                                 title="Save Job"
                             >
-                                <i class="bi {% if job.id in saved_job_ids %}bi-heart-fill text-danger{% else %}bi-heart{% endif %}"></i>
+                                <i class="bi {% if job.id in saved_job_ids %}bi-bookmark-heart-fill text-danger{% else %}bi-bookmark{% endif %}"></i>
                             </button>
                         </div>
 
-                        <div class="hn-job-meta-row">
+                        <div class="hn-job-meta-row mb-2">
                             <span class="hn-meta-item"><i class="bi bi-geo-alt-fill text-danger"></i>{{ job.location }}</span>
                             <span class="hn-badge-tag">{{ job.get_job_type_display }}</span>
-                            <span class="hn-badge-tag">{{ job.get_work_mode_display }}</span>
-                            <span class="hn-salary-tag">{{ job.formatted_salary_display }}</span>
+                            {% if job.work_mode == 'REMOTE' or job.is_remote %}
+                                <span class="badge bg-success-subtle text-success border border-success-subtle py-1.5 px-2.5 rounded-pill"><i class="bi bi-laptop me-1"></i>Remote • Australia</span>
+                            {% elif job.work_mode == 'HYBRID' %}
+                                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle py-1.5 px-2.5 rounded-pill"><i class="bi bi-house-door me-1"></i>Hybrid</span>
+                            {% else %}
+                                <span class="hn-badge-tag">{{ job.get_work_mode_display }}</span>
+                            {% endif %}
+                            <span class="hn-salary-tag fw-bold text-success"><i class="bi bi-currency-dollar me-0.5"></i>{{ job.formatted_salary_display }}</span>
                             {% if job.id in applied_job_ids %}
-                                <span class="badge bg-success text-white py-1 px-2"><i class="bi bi-check-circle me-1"></i>Applied</span>
+                                <span class="badge bg-success text-white py-1 px-2.5 rounded-pill"><i class="bi bi-check-circle me-1"></i>Applied</span>
                             {% endif %}
                         </div>
 
-                        <div class="hn-job-desc-snippet">
-                            {{ job.description|truncatewords:32 }}
+                        <div class="hn-job-desc-snippet mb-3">
+                            {{ job.description|truncatewords:28 }}
                         </div>
 
                         <!-- Skills chips if available -->
@@ -266,13 +284,14 @@
                             </div>
                         {% endif %}
 
-                        <div class="hn-job-footer">
-                            <span><i class="bi bi-clock me-1"></i>Listed {{ job.created_at|timesince }} ago</span>
+                        <div class="hn-job-footer pt-2 border-top d-flex justify-content-between align-items-center">
+                            <span class="text-muted small"><i class="bi bi-clock me-1"></i>Listed {{ job.created_at|timesince }} ago</span>
                             <div class="d-flex align-items-center gap-2">
-                                <span class="text-primary fw-bold">View Role Details &rarr;</span>
+                                <a href="/jobs/{{ job.id }}/" class="btn btn-sm btn-light border">Details</a>
+                                <a href="/jobs/{{ job.id }}/apply/" class="btn btn-sm hn-btn-primary px-3">Apply Now</a>
                             </div>
                         </div>
-                    </a>
+                    </div>
                 {% empty %}
                     <!-- Empty State -->
                     <div class="text-center py-5 bg-white rounded-4 border p-4">

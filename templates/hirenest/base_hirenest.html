@@ -32,7 +32,7 @@
     <link rel="stylesheet" href="{% static 'css/hirenest.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
-<body class="hirenest-body">
+<body class="hirenest-body" data-user-authenticated="{% if request.user.is_authenticated %}true{% else %}false{% endif %}" data-user-role="{{ request.user.role|default:'GUEST' }}">
 
     <!-- HireNest Australia Header -->
     <header class="hn-navbar py-2.5">
@@ -41,7 +41,7 @@
                 
                 <!-- Brand Logo -->
                 <div class="d-flex align-items-center gap-4">
-                    <a href="/" class="hn-logo-wrap">
+                    <a href="/" class="hn-logo-wrap text-decoration-none">
                         <div class="hn-logo-icon">
                             <i class="bi bi-briefcase-fill"></i>
                         </div>
@@ -65,7 +65,7 @@
                 <div class="d-flex align-items-center gap-2.5">
                     
                     <!-- For Employers Link / Button -->
-                    <a href="/employers/" class="hn-btn-employer d-none d-md-inline-flex align-items-center gap-1.5">
+                    <a href="/employers/" class="hn-btn-employer d-none d-md-inline-flex align-items-center gap-1.5 text-decoration-none">
                         <i class="bi bi-building"></i>
                         <span>For Employers</span>
                     </a>
@@ -87,6 +87,7 @@
                                         <div class="fw-bold text-dark">{{ request.user.get_full_name|default:request.user.email }}</div>
                                         <div class="text-muted small text-truncate">{{ request.user.email }}</div>
                                     </li>
+                                    <li><a class="dropdown-item py-2" href="/dashboard/"><i class="bi bi-speedometer2 me-2 text-primary"></i>My Dashboard</a></li>
                                     <li><a class="dropdown-item py-2" href="/profile/"><i class="bi bi-person me-2 text-primary"></i>My Profile & Resume</a></li>
                                     <li><a class="dropdown-item py-2" href="/applications/"><i class="bi bi-file-earmark-check me-2 text-success"></i>My Applications</a></li>
                                     <li><a class="dropdown-item py-2" href="/saved-jobs/"><i class="bi bi-bookmark-heart me-2 text-danger"></i>Saved Jobs</a></li>
@@ -96,15 +97,15 @@
                             </div>
                         {% else %}
                             <!-- Recruiter Workspace Shortcut -->
-                            <a href="/employers/login/" class="hn-btn-primary">
+                            <a href="/employers/login/" class="hn-btn-primary text-decoration-none">
                                 <i class="bi bi-speedometer2"></i>
                                 <span>Recruiter Workspace</span>
                             </a>
                         {% endif %}
                     {% else %}
-                        <!-- Guest Auth Links -->
-                        <a href="/login/" class="hn-btn-outline">Log In</a>
-                        <a href="/register/" class="hn-btn-primary">Sign Up</a>
+                        <!-- Guest Auth Trigger Buttons (Opens Centered Auth Modal) -->
+                        <button type="button" class="hn-btn-outline cursor-pointer" onclick="openCandidateAuthModal('login')">Log In</button>
+                        <button type="button" class="hn-btn-primary cursor-pointer" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
                     {% endif %}
 
                     <!-- Mobile Menu Toggler -->
@@ -141,14 +142,15 @@
             <div class="border-top pt-3">
                 {% if request.user.is_authenticated %}
                     {% if request.user.role == 'CANDIDATE' %}
-                        <a href="/profile/" class="btn btn-outline-primary w-100 mb-2">My Profile</a>
+                        <a href="/dashboard/" class="btn btn-primary w-100 mb-2">My Dashboard</a>
+                        <a href="/profile/" class="btn btn-outline-primary w-100 mb-2">My Profile & Resume</a>
                         <a href="/logout/" class="btn btn-light text-danger w-100">Log Out</a>
                     {% else %}
                         <a href="/employers/login/" class="btn hn-btn-primary w-100 mb-2">Recruiter Workspace</a>
                     {% endif %}
                 {% else %}
-                    <a href="/login/" class="btn btn-outline-primary w-100 mb-2">Candidate Log In</a>
-                    <a href="/register/" class="btn hn-btn-primary w-100 mb-2">Candidate Sign Up</a>
+                    <button type="button" class="btn btn-outline-primary w-100 mb-2" onclick="openCandidateAuthModal('login')">Candidate Log In</button>
+                    <button type="button" class="btn hn-btn-primary w-100 mb-2" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
                     <a href="/employers/login/" class="btn btn-light border w-100">Employer Log In</a>
                 {% endif %}
             </div>
@@ -203,6 +205,7 @@
                     <ul class="hn-footer-links">
                         <li><a href="/jobs/">Search All Jobs</a></li>
                         <li><a href="/companies/">Browse Companies</a></li>
+                        <li><a href="/dashboard/">Candidate Dashboard</a></li>
                         <li><a href="/saved-jobs/">Saved Jobs</a></li>
                         <li><a href="/applications/">My Applications</a></li>
                         <li><a href="/profile/">Candidate Profile</a></li>
@@ -267,6 +270,9 @@
             </div>
         </div>
     </footer>
+
+    <!-- Candidate Sign In / Register & Onboarding Modal Component -->
+    {% include "hirenest/auth_modal.html" %}
 
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>

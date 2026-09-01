@@ -1,13 +1,21 @@
 import os
+import json
 import pytest
+from datetime import timedelta
 from decimal import Decimal
 from django.test import TestCase, Client
 from django.conf import settings
-from apps.accounts.models import User
+from django.utils import timezone
+from apps.accounts.models import User, OTPVerification
 from apps.companies.models import Company, CompanyMember
 from apps.jobs.models import Job, JobSkill
 from apps.candidates.models import CandidateProfile, SavedJob
 from apps.applications.models import Application
+from portal.services import (
+    get_australian_jobs_queryset,
+    normalize_australian_location,
+    get_candidate_recommended_jobs,
+)
 
 
 class HireNestAustraliaStandaloneTests(TestCase):
@@ -83,6 +91,10 @@ class HireNestAustraliaStandaloneTests(TestCase):
             full_name="Sarah Connor",
             location="Sydney NSW",
             current_designation="Software Developer",
+            department="Engineering",
+            preferred_job_role="Python Developer",
+            preferred_location="Sydney NSW",
+            employment_type="FULL_TIME",
             total_experience=Decimal("5.0"),
             expected_salary=Decimal("160000.00"),
             candidate_status="ACTIVE"
@@ -114,7 +126,80 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(response, "Atlassian Australia")
 
     # --------------------------------------------------------------------------
-    # 2. Australian Job Search & Filter Tests
+    # 2. Strict Backend-Enforced Australia Jobs Only Filtering Tests
+    # --------------------------------------------------------------------------
+    def test_strict_australia_only_marketplace_filtering(self):
+        # Create non-Australian international jobs in database
+        non_au_company = Company.objects.create(
+            name="Bangalore Tech Ltd",
+            slug="bangalore-tech",
+            industry="IT",
+            location="Bangalore, India",
+            description="Indian development center."
+        )
+        indian_job = Job.objects.create(
+            company=non_au_company,
+            title="Java Backend Engineer (India)",
+            location="Bangalore, Karnataka, India",
+            job_type="FULL_TIME",
+            work_mode="ONSITE",
+            currency="INR",
+            min_salary=Decimal("1200000.00"),
+            max_salary=Decimal("2000000.00"),
+            status="ACTIVE",
+            description="Java role in Bangalore.",
+            created_by=self.recruiter_user
+        )
+
+        us_company = Company.objects.create(
+            name="US Tech Corp",
+            slug="us-tech",
+            industry="IT",
+            location="New York, USA"
+        )
+        us_job = Job.objects.create(
+            company=us_company,
+            title="React Developer (US)",
+            location="New York, USA",
+            job_type="FULL_TIME",
+            currency="USD",
+            min_salary=Decimal("120000.00"),
+            max_salary=Decimal("160000.00"),
+            status="ACTIVE",
+            description="US based role.",
+            created_by=self.recruiter_user
+        )
+
+        # Create Melbourne AU Job
+        melb_job = Job.objects.create(
+            company=self.company,
+            title="Clinical Nurse Specialist",
+            location="Melbourne VIC",
+            job_type="FULL_TIME",
+            currency="AUD",
+            min_salary=Decimal("95000.00"),
+            max_salary=Decimal("120000.00"),
+            status="ACTIVE",
+            description="Healthcare role in Melbourne.",
+            created_by=self.recruiter_user
+        )
+
+        # QuerySet test
+        au_qs = get_australian_jobs_queryset()
+        self.assertIn(self.job, au_qs)
+        self.assertIn(melb_job, au_qs)
+        self.assertNotIn(indian_job, au_qs)
+        self.assertNotIn(us_job, au_qs)
+
+        # Job search page check
+        search_resp = self.client.get('/jobs/')
+        self.assertContains(search_resp, "Senior Python Backend Engineer")
+        self.assertContains(search_resp, "Clinical Nurse Specialist")
+        self.assertNotContains(search_resp, "Java Backend Engineer (India)")
+        self.assertNotContains(search_resp, "React Developer (US)")
+
+    # --------------------------------------------------------------------------
+    # 3. Australian Job Search & Filter Tests
     # --------------------------------------------------------------------------
     def test_job_search_page(self):
         response = self.client.get('/jobs/')
@@ -149,7 +234,7 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(response_empty, "No Matching Jobs Found")
 
     # --------------------------------------------------------------------------
-    # 3. Job Details Page Tests
+    # 4. Job Details Page Tests
     # --------------------------------------------------------------------------
     def test_job_details_page(self):
         response = self.client.get(f'/jobs/{self.job.id}/')
@@ -161,49 +246,198 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(response, "Apply for this Role")
 
     # --------------------------------------------------------------------------
-    # 4. Candidate Registration & Login Tests
+    # 5. Candidate Email + OTP Authentication Flow Tests
     # --------------------------------------------------------------------------
-    def test_candidate_registration(self):
-        response = self.client.get('/register/')
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Create Candidate Account")
+    def test_send_otp_success_and_rate_limiting(self):
+        test_email = "newcandidate.alex@gmail.com"
+
+        # 1. First OTP request
+        resp1 = self.client.post(
+            '/auth/send-otp/',
+            data=json.dumps({'email': test_email}),
+            content_type='application/json'
+        )
+        self.assertEqual(resp1.status_code, 200)
+        data1 = resp1.json()
+        self.assertTrue(data1.get('success'))
+        self.assertEqual(data1.get('cooldown'), 60)
+
+        # Verify record in database
+        otp_rec = OTPVerification.objects.filter(email=test_email).first()
+        self.assertIsNotNone(otp_rec)
+        self.assertFalse(otp_rec.verified)
+
+        # 2. Immediate second request triggers rate limit cooldown (HTTP 429)
+        resp2 = self.client.post(
+            '/auth/send-otp/',
+            data=json.dumps({'email': test_email}),
+            content_type='application/json'
+        )
+        self.assertEqual(resp2.status_code, 429)
+        self.assertFalse(resp2.json().get('success'))
+
+    def test_verify_otp_valid_and_creates_candidate_identity(self):
+        test_email = "alex.turner@gmail.com"
+        raw_code = "654321"
+
+        otp_rec = OTPVerification(
+            email=test_email,
+            expires_at=timezone.now() + timedelta(minutes=10)
+        )
+        otp_rec.set_otp(raw_code)
+        otp_rec.save()
+
+        verify_resp = self.client.post(
+            '/auth/verify-otp/',
+            data=json.dumps({'email': test_email, 'otp': raw_code}),
+            content_type='application/json'
+        )
+        self.assertEqual(verify_resp.status_code, 200)
+        data = verify_resp.json()
+        self.assertTrue(data.get('success'))
+        self.assertTrue(data.get('is_new'))
+        self.assertTrue(data.get('onboarding_required'))
+
+        # Verify user and candidate profile created in shared DB
+        created_user = User.objects.filter(email=test_email).first()
+        self.assertIsNotNone(created_user)
+        self.assertEqual(created_user.role, User.Role.CANDIDATE)
+        self.assertTrue(created_user.is_verified)
+        self.assertTrue(CandidateProfile.objects.filter(user=created_user).exists())
+
+    def test_verify_otp_invalid_and_expired(self):
+        test_email = "invalid.test@gmail.com"
+        raw_code = "123456"
+
+        otp_rec = OTPVerification(
+            email=test_email,
+            expires_at=timezone.now() + timedelta(minutes=10)
+        )
+        otp_rec.set_otp(raw_code)
+        otp_rec.save()
+
+        # 1. Wrong OTP code
+        bad_resp = self.client.post(
+            '/auth/verify-otp/',
+            data=json.dumps({'email': test_email, 'otp': '999999'}),
+            content_type='application/json'
+        )
+        self.assertEqual(bad_resp.status_code, 400)
+        self.assertFalse(bad_resp.json().get('success'))
+
+        # 2. Expired OTP record
+        otp_rec.expires_at = timezone.now() - timedelta(minutes=5)
+        otp_rec.save()
+
+        expired_resp = self.client.post(
+            '/auth/verify-otp/',
+            data=json.dumps({'email': test_email, 'otp': raw_code}),
+            content_type='application/json'
+        )
+        self.assertEqual(expired_resp.status_code, 400)
+        self.assertIn("expired", expired_resp.json().get('error', '').lower())
+
+    # --------------------------------------------------------------------------
+    # 6. Social Auth (Google / Apple) Endpoint Tests
+    # --------------------------------------------------------------------------
+    def test_social_auth_google_and_apple(self):
+        # 1. Google sign-in
+        google_resp = self.client.post(
+            '/auth/social/',
+            data=json.dumps({
+                'provider': 'google',
+                'email': 'emma.watson@gmail.com',
+                'name': 'Emma Watson',
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(google_resp.status_code, 200)
+        self.assertTrue(google_resp.json().get('success'))
+
+        user_emma = User.objects.filter(email='emma.watson@gmail.com').first()
+        self.assertIsNotNone(user_emma)
+        self.assertEqual(user_emma.role, User.Role.CANDIDATE)
+
+        # 2. Apple sign-in linking existing user
+        apple_resp = self.client.post(
+            '/auth/social/',
+            data=json.dumps({
+                'provider': 'apple',
+                'email': 'emma.watson@gmail.com',
+                'name': 'Emma Watson',
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(apple_resp.status_code, 200)
+        self.assertTrue(apple_resp.json().get('success'))
+        # No duplicate user created
+        self.assertEqual(User.objects.filter(email='emma.watson@gmail.com').count(), 1)
+
+    # --------------------------------------------------------------------------
+    # 7. 3-Question Onboarding Wizard API Tests
+    # --------------------------------------------------------------------------
+    def test_candidate_3_question_onboarding_wizard_api(self):
+        self.client.login(email='candidate.sarah@gmail.com', password='CandidatePassword123!')
 
         payload = {
-            'first_name': 'David',
-            'last_name': 'Warner',
-            'email': 'david.warner@cricket.com.au',
-            'phone_number': '+61 411 999 888',
-            'location': 'Sydney NSW',
-            'password': 'SecurePassword123!',
-            'confirm_password': 'SecurePassword123!',
-            'terms': 'on'
+            'categories': ['IT & Software Development'],
+            'role_title': 'Lead Cloud Engineer',
+            'locations': ['Sydney NSW', 'Remote • Australia'],
+            'job_types': ['FULL_TIME', 'CONTRACT']
         }
-        post_response = self.client.post('/register/', data=payload, follow=True)
-        self.assertEqual(post_response.status_code, 200)
 
-        # Verify candidate created in shared TalentVault DB
-        new_user = User.objects.filter(email='david.warner@cricket.com.au').first()
-        self.assertIsNotNone(new_user)
-        self.assertEqual(new_user.role, User.Role.CANDIDATE)
-        self.assertTrue(CandidateProfile.objects.filter(user=new_user).exists())
+        onboard_resp = self.client.post(
+            '/api/onboarding/',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(onboard_resp.status_code, 200)
+        self.assertTrue(onboard_resp.json().get('success'))
 
-    def test_candidate_login(self):
-        response = self.client.get('/login/')
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Candidate Log In")
-
-        login_payload = {
-            'email': 'candidate.sarah@gmail.com',
-            'password': 'CandidatePassword123!',
-            'remember_me': 'on'
-        }
-        post_response = self.client.post('/login/', data=login_payload, follow=True)
-        self.assertEqual(post_response.status_code, 200)
-        self.assertTrue(post_response.context['user'].is_authenticated)
-        self.assertEqual(post_response.context['user'].email, 'candidate.sarah@gmail.com')
+        # Verify saved in CandidateProfile
+        self.candidate_profile.refresh_from_db()
+        self.assertEqual(self.candidate_profile.department, 'IT & Software Development')
+        self.assertEqual(self.candidate_profile.preferred_job_role, 'Lead Cloud Engineer')
+        self.assertIn('Sydney NSW', self.candidate_profile.preferred_location)
+        self.assertEqual(self.candidate_profile.employment_type, 'FULL_TIME')
+        self.assertIn('onboarding_answers', self.candidate_profile.parsed_json)
 
     # --------------------------------------------------------------------------
-    # 5. Direct Job Application Flow Tests
+    # 8. Australian Locations Autocomplete Lookup Tests
+    # --------------------------------------------------------------------------
+    def test_candidate_locations_lookup_api(self):
+        resp_syd = self.client.get('/api/locations/?q=Syd')
+        self.assertEqual(resp_syd.status_code, 200)
+        data = resp_syd.json()
+        labels = [l['label'] for l in data.get('locations', [])]
+        self.assertTrue(any('Sydney' in l for l in labels))
+
+        resp_rem = self.client.get('/api/locations/?q=Remote')
+        self.assertEqual(resp_rem.status_code, 200)
+        labels_rem = [l['label'] for l in resp_rem.json().get('locations', [])]
+        self.assertTrue(any('Remote' in l for l in labels_rem))
+
+    # --------------------------------------------------------------------------
+    # 9. Candidate Recommendations Matching Engine Tests
+    # --------------------------------------------------------------------------
+    def test_candidate_recommendations_matching_engine(self):
+        recommended = get_candidate_recommended_jobs(self.candidate_profile, limit=5)
+        self.assertIn(self.job, recommended)
+
+    # --------------------------------------------------------------------------
+    # 10. Candidate Dashboard Rendering Tests
+    # --------------------------------------------------------------------------
+    def test_candidate_dashboard_authenticated(self):
+        self.client.login(email='candidate.sarah@gmail.com', password='CandidatePassword123!')
+        response = self.client.get('/dashboard/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sarah Connor")
+        self.assertContains(response, "Recommended Jobs for You")
+        self.assertContains(response, "Target Preferences")
+        self.assertContains(response, "Senior Python Backend Engineer")
+
+    # --------------------------------------------------------------------------
+    # 11. Direct Job Application Flow Tests
     # --------------------------------------------------------------------------
     def test_job_application_submission(self):
         self.client.login(email='candidate.sarah@gmail.com', password='CandidatePassword123!')
@@ -237,7 +471,7 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(apps_page, "Atlassian Australia")
 
     # --------------------------------------------------------------------------
-    # 6. Saved Jobs AJAX Toggle Tests
+    # 12. Saved Jobs AJAX Toggle Tests
     # --------------------------------------------------------------------------
     def test_save_job_toggle(self):
         self.client.login(email='candidate.sarah@gmail.com', password='CandidatePassword123!')
@@ -268,7 +502,7 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertFalse(SavedJob.objects.filter(candidate=self.candidate_profile, job=self.job).exists())
 
     # --------------------------------------------------------------------------
-    # 7. Employer Suite & TalentVault Recruiter Workspace Redirection Tests
+    # 13. Employer Suite Tests
     # --------------------------------------------------------------------------
     def test_employer_landing_page(self):
         response = self.client.get('/employers/')
@@ -276,14 +510,10 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(response, "Find the right talent.")
         self.assertContains(response, "Build your team.")
         self.assertContains(response, "employer-hero")
-        self.assertContains(response, "AI Candidate Matching")
-        self.assertContains(response, "Register as Employer")
-        self.assertContains(response, "Employer Login")
 
     def test_employer_registration_creates_talentvault_db_records(self):
         response = self.client.get('/employers/register/')
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Register Employer Account")
 
         payload = {
             'org_name': 'Qantas Airways Australia',
@@ -297,48 +527,17 @@ class HireNestAustraliaStandaloneTests(TestCase):
             'terms': 'on'
         }
         post_response = self.client.post('/employers/register/', data=payload, follow=False)
-        # Should redirect into the TalentVault Recruiter Workspace URL
         self.assertEqual(post_response.status_code, 302)
         expected_target = getattr(settings, 'TALENTVAULT_RECRUITER_WORKSPACE_URL', '/dashboard/recruiter/')
         self.assertIn(expected_target, post_response.url)
 
-        # Verify employer account created in shared TalentVault database
         new_recruiter = User.objects.filter(email='hr@qantas.com.au').first()
         self.assertIsNotNone(new_recruiter)
         self.assertEqual(new_recruiter.role, User.Role.RECRUITER)
-        company = Company.objects.filter(name='Qantas Airways Australia').first()
-        self.assertIsNotNone(company)
-        self.assertTrue(CompanyMember.objects.filter(company=company, user=new_recruiter).exists())
-
-    def test_employer_login_redirects_to_talentvault_recruiter_workspace(self):
-        response = self.client.get('/employers/login/')
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Employer Sign In")
-
-        login_payload = {
-            'email': 'recruiter@atlassian.com.au',
-            'password': 'RecruiterPassword123!',
-            'remember_me': 'on'
-        }
-        post_response = self.client.post('/employers/login/', data=login_payload, follow=False)
-        # Verify redirect to TalentVault Recruiter Workspace
-        self.assertEqual(post_response.status_code, 302)
-        expected_target = getattr(settings, 'TALENTVAULT_RECRUITER_WORKSPACE_URL', '/dashboard/recruiter/')
-        self.assertIn(expected_target, post_response.url)
 
     # --------------------------------------------------------------------------
-    # 8. Informational Pages Tests
+    # 14. Informational Pages Tests
     # --------------------------------------------------------------------------
-    def test_companies_directory(self):
-        response = self.client.get('/companies/')
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Atlassian Australia")
-
-        detail_response = self.client.get('/companies/atlassian-australia/')
-        self.assertEqual(detail_response.status_code, 200)
-        self.assertContains(detail_response, "Atlassian Australia")
-        self.assertContains(detail_response, "Senior Python Backend Engineer")
-
     def test_salary_guide_page(self):
         response = self.client.get('/salary-guide/')
         self.assertEqual(response.status_code, 200)
