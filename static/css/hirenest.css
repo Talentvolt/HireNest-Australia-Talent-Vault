@@ -43,12 +43,30 @@ body.hirenest-body {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
 }
 
+.hn-logo-wrap {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .hn-navbar-logo {
-  height: 38px;
+  height: 48px;
   width: auto;
-  max-width: 200px;
   object-fit: contain;
   display: block;
+  vertical-align: middle;
+}
+
+@media (max-width: 991.98px) {
+  .hn-navbar-logo {
+    height: 44px;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .hn-navbar-logo {
+    height: 40px;
+  }
 }
 
 .hn-footer-logo-wrap {
