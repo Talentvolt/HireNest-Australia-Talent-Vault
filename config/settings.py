@@ -100,16 +100,14 @@ if render_hostname:
     if render_origin not in CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS.append(render_origin)
 
-# Reverse proxy SSL header for Render HTTPS termination
-# This informs Django that Render's proxy handled SSL termination for the incoming client request.
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
 # HTTPS & Security Redirect Settings
-# ONLY enable SSL redirects and secure-only cookies in actual production environments (Render / Live production).
+# ONLY enable SSL redirects, secure proxy headers, and secure-only cookies in actual production environments (Render / Live production).
 # NEVER force SSL redirection on local development, runserver, testing, or when DEBUG is True.
 is_production = not DEBUG and not IS_TESTING and (IS_RENDER or os.environ.get('ENVIRONMENT', '').lower().startswith('prod'))
 
 if is_production:
+    # Reverse proxy SSL header for Render HTTPS termination
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', '1').strip().lower() in ('1', 'true', 'yes')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
@@ -124,7 +122,8 @@ if is_production:
     else:
         SECURE_HSTS_SECONDS = 0
 else:
-    # Local Development & Testing: strictly disable HTTPS redirects and secure-only cookies
+    # Local Development & Testing: strictly disable HTTPS redirects, headers, and secure-only cookies
+    SECURE_PROXY_SSL_HEADER = None
     SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False

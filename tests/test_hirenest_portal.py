@@ -555,3 +555,23 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Job Seeker Resources")
         self.assertContains(response, "ATS Resume Template")
+
+    # --------------------------------------------------------------------------
+    # 15. Local HTTP & HTTPS Prevention Verification Tests
+    # --------------------------------------------------------------------------
+    def test_local_http_routes_and_security_settings(self):
+        # Verify Django security settings for local development
+        self.assertFalse(getattr(settings, 'SECURE_SSL_REDIRECT', False))
+        self.assertEqual(getattr(settings, 'SECURE_HSTS_SECONDS', 0), 0)
+        self.assertIsNone(getattr(settings, 'SECURE_PROXY_SSL_HEADER', None))
+
+        # Verify main local development endpoints respond over HTTP without HTTPS redirects
+        for path in ['/', '/jobs/', '/employers/', '/login/', '/register/']:
+            resp = self.client.get(path, HTTP_HOST='127.0.0.1:8002')
+            self.assertEqual(resp.status_code, 200, f"Failed for {path}")
+            # Ensure no Strict-Transport-Security header is sent
+            self.assertNotIn('Strict-Transport-Security', resp.headers)
+            # Ensure no Location header forcing HTTPS
+            if 'Location' in resp.headers:
+                self.assertFalse(resp.headers['Location'].startswith('https://127.0.0.1'))
+                self.assertFalse(resp.headers['Location'].startswith('https://localhost'))

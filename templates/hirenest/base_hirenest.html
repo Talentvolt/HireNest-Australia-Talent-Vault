@@ -28,6 +28,13 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
+    <!-- Favicons -->
+    <link rel="shortcut icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
+    <link rel="icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon-32x32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'favicon-16x16.png' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'apple-touch-icon.png' %}">
+
     <!-- HireNest Australia Custom Design System -->
     <link rel="stylesheet" href="{% static 'css/hirenest.css' %}">
     {% block extra_css %}{% endblock %}
@@ -42,13 +49,7 @@
                 <!-- Brand Logo -->
                 <div class="d-flex align-items-center gap-4">
                     <a href="/" class="hn-logo-wrap text-decoration-none">
-                        <div class="hn-logo-icon">
-                            <i class="bi bi-briefcase-fill"></i>
-                        </div>
-                        <div class="hn-logo-text">
-                            <span class="hn-logo-title">HireNest</span>
-                            <span class="hn-logo-subtitle">Australia</span>
-                        </div>
+                        <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-navbar-logo">
                     </a>
 
                     <!-- Desktop Primary Navigation -->
@@ -121,12 +122,9 @@
     <!-- Mobile Navigation Offcanvas -->
     <div class="offcanvas offcanvas-end" tabindex="-1" id="hnMobileMenu" aria-labelledby="hnMobileMenuLabel">
         <div class="offcanvas-header border-bottom">
-            <div class="d-flex align-items-center gap-2">
-                <div class="hn-logo-icon" style="width: 32px; height: 32px; font-size: 1rem;">
-                    <i class="bi bi-briefcase-fill"></i>
-                </div>
-                <h5 class="offcanvas-title fw-bold" id="hnMobileMenuLabel">HireNest Australia</h5>
-            </div>
+            <a href="/" class="text-decoration-none">
+                <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" style="height: 34px; width: auto; object-fit: contain;">
+            </a>
             <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>
         <div class="offcanvas-body d-flex flex-column justify-content-between">
@@ -184,11 +182,10 @@
                 
                 <!-- Column 1: Brand Info -->
                 <div class="col-lg-4 col-md-6">
-                    <div class="d-flex align-items-center gap-2 mb-3">
-                        <div class="hn-logo-icon" style="width: 36px; height: 36px; font-size: 1.1rem;">
-                            <i class="bi bi-briefcase-fill"></i>
-                        </div>
-                        <span class="fs-4 fw-bold text-white">HireNest Australia</span>
+                    <div class="mb-3">
+                        <a href="/" class="hn-footer-logo-wrap text-decoration-none">
+                            <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-footer-logo">
+                        </a>
                     </div>
                     <p class="text-secondary small mb-3 leading-relaxed">
                         Australia's dedicated job portal connecting job seekers with leading companies across NSW, VIC, QLD, WA, SA, TAS, ACT, and NT.

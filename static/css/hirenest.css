@@ -43,45 +43,33 @@ body.hirenest-body {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
 }
 
-.hn-logo-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  text-decoration: none;
-}
-
-.hn-logo-icon {
-  width: 38px;
+.hn-navbar-logo {
   height: 38px;
-  background: linear-gradient(135deg, var(--hn-navy) 0%, var(--hn-blue) 100%);
+  width: auto;
+  max-width: 200px;
+  object-fit: contain;
+  display: block;
+}
+
+.hn-footer-logo-wrap {
+  display: inline-block;
+  background-color: #ffffff;
+  padding: 6px 14px;
   border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  font-size: 1.25rem;
-  box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease;
 }
 
-.hn-logo-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.1;
+.hn-footer-logo-wrap:hover {
+  transform: translateY(-1px);
 }
 
-.hn-logo-title {
-  font-size: 1.35rem;
-  font-weight: 800;
-  color: var(--hn-navy);
-  letter-spacing: -0.5px;
-}
-
-.hn-logo-subtitle {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--hn-blue);
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
+.hn-footer-logo {
+  height: 34px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+  display: block;
 }
 
 .hn-nav-link {
