@@ -325,6 +325,35 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertFalse(new_user.candidate_profile.is_onboarding_complete)
         self.assertEqual(adapter.get_login_redirect_url(incomplete), '/onboarding/')
 
+    def test_google_social_app_sync_is_single_and_uses_env(self):
+        from allauth.socialaccount.models import SocialApp
+        from django.contrib.sites.models import Site
+        from apps.accounts.apps import sync_google_social_app, _clean_google_env
+
+        site = Site.objects.get(id=settings.SITE_ID)
+
+        # Simulate a stale/duplicate Google app (e.g. an old TalentVault client).
+        stale = SocialApp.objects.create(
+            provider='google',
+            name='TalentVault Google',
+            client_id='old-talentvault-client.apps.googleusercontent.com',
+            secret='old-secret',
+        )
+        stale.sites.add(site)
+
+        sync_google_social_app()
+
+        apps = SocialApp.objects.filter(provider='google')
+        self.assertEqual(apps.count(), 1)
+
+        app = apps.first()
+        self.assertIn(site, app.sites.all())
+        self.assertNotEqual(app.client_id, 'old-talentvault-client.apps.googleusercontent.com')
+
+        expected = _clean_google_env('GOOGLE_CLIENT_ID')
+        if expected:
+            self.assertEqual(app.client_id, expected)
+
     # --------------------------------------------------------------------------
     # 6. Branded Candidate Onboarding Tests
     # --------------------------------------------------------------------------

@@ -110,73 +110,94 @@ def create_default_recruiter(sender, **kwargs):
     except Exception as err:
         logger.error(f"Error in create_default_recruiter: {err}")
 
-def setup_google_social_app(sender, **kwargs):
-    from django.db import connection
+def _clean_google_env(name):
+    """Read an OAuth env var, tolerating accidental `NAME=value` copy/paste."""
     import os
+    from django.conf import settings
+
+    value = os.environ.get(name, '') or getattr(settings, name, '') or ''
+    value = value.strip()
+    prefix = f"{name}="
+    if value.startswith(prefix):
+        value = value[len(prefix):].strip()
+    return value
+
+
+def sync_google_social_app():
+    """
+    Ensure there is exactly ONE Google SocialApp, built from the production
+    environment, attached only to the configured Site. This prevents a stale
+    TalentVault app or a duplicate from being selected by django-allauth.
+
+    Safe to run repeatedly (post_migrate / management command).
+    """
+    from django.db import connection
+    from django.contrib.sites.models import Site
+    from allauth.socialaccount.models import SocialApp
+    from django.conf import settings
+
+    tables = connection.introspection.table_names()
+    if 'django_site' not in tables or 'socialaccount_socialapp' not in tables:
+        return None
+
+    site_id = getattr(settings, 'SITE_ID', 1)
+    site_domain = getattr(settings, 'SITE_DOMAIN', 'hirenest.com.au')
+    site_name = getattr(settings, 'SITE_NAME', 'HireNest Australia')
+
+    site, _ = Site.objects.get_or_create(
+        id=site_id,
+        defaults={'domain': site_domain, 'name': site_name},
+    )
+    # Keep the Site in sync with SITE_URL/SITE_DOMAIN so allauth resolves the
+    # Google SocialApp for the production domain (hirenest.com.au).
+    if site.domain != site_domain or site.name != site_name:
+        site.domain = site_domain
+        site.name = site_name
+        site.save(update_fields=['domain', 'name'])
+
+    client_id = _clean_google_env('GOOGLE_CLIENT_ID')
+    client_secret = _clean_google_env('GOOGLE_CLIENT_SECRET')
+
+    google_apps = list(SocialApp.objects.filter(provider='google').order_by('id'))
+    app = google_apps[0] if google_apps else SocialApp(provider='google', name='Google')
+
+    app.name = 'Google'
+    if client_id:
+        app.client_id = client_id
+    elif not app.client_id:
+        app.client_id = 'placeholder-google-client-id'
+    if client_secret:
+        app.secret = client_secret
+    elif not app.secret:
+        app.secret = 'placeholder-google-client-secret'
+    app.save()
+
+    # Attach ONLY to the configured Site; allauth's on_site() filter then has a
+    # single unambiguous match.
+    app.sites.set([site])
+
+    # Remove any duplicate / legacy Google apps so they can never take precedence.
+    removed = 0
+    for extra in google_apps[1:]:
+        extra.delete()
+        removed += 1
+
+    if client_id:
+        logger.info(
+            "Google OAuth SocialApp synced for %s (client_id=%s..., site_id=%s, removed_duplicates=%s)",
+            site_domain, client_id[:24], site.id, removed,
+        )
+    else:
+        logger.warning(
+            "GOOGLE_CLIENT_ID is not set; Google OAuth is using a placeholder client id."
+        )
+
+    return app
+
+
+def setup_google_social_app(sender, **kwargs):
     try:
-        tables = connection.introspection.table_names()
-        if 'django_site' in tables and 'socialaccount_socialapp' in tables:
-            from django.contrib.sites.models import Site
-            from allauth.socialaccount.models import SocialApp
-            from django.conf import settings
-
-            site_id = getattr(settings, 'SITE_ID', 1)
-            site_domain = getattr(settings, 'SITE_DOMAIN', 'hirenest.com.au')
-            site_name = getattr(settings, 'SITE_NAME', 'HireNest Australia')
-
-            site, _ = Site.objects.get_or_create(
-                id=site_id,
-                defaults={'domain': site_domain, 'name': site_name}
-            )
-            # Keep the Site in sync with SITE_URL/SITE_DOMAIN so allauth resolves
-            # the Google SocialApp for the production domain (hirenest.com.au).
-            if site.domain != site_domain or site.name != site_name:
-                site.domain = site_domain
-                site.name = site_name
-                site.save(update_fields=['domain', 'name'])
-
-            def _clean_env(name):
-                value = os.environ.get(name, '') or getattr(settings, name, '') or ''
-                value = value.strip()
-                prefix = f"{name}="
-                if value.startswith(prefix):
-                    value = value[len(prefix):].strip()
-                return value
-
-            client_id = _clean_env('GOOGLE_CLIENT_ID')
-            client_secret = _clean_env('GOOGLE_CLIENT_SECRET')
-
-            # Prefer the Google app attached to this site, otherwise any Google app.
-            app = (
-                SocialApp.objects.filter(provider='google', sites=site).first()
-                or SocialApp.objects.filter(provider='google').order_by('id').first()
-            )
-            if app is None:
-                app = SocialApp(provider='google', name='Google')
-
-            app.name = 'Google'
-            if client_id:
-                app.client_id = client_id
-            elif not app.client_id:
-                app.client_id = 'placeholder-google-client-id'
-            if client_secret:
-                app.secret = client_secret
-            elif not app.secret:
-                app.secret = 'placeholder-google-client-secret'
-            app.save()
-
-            if site not in app.sites.all():
-                app.sites.add(site)
-
-            if client_id:
-                logger.info(
-                    "Google OAuth SocialApp synced for %s (client_id=%s...)",
-                    site_domain, client_id[:24],
-                )
-            else:
-                logger.warning(
-                    "GOOGLE_CLIENT_ID is not set; Google OAuth is using a placeholder client id."
-                )
+        sync_google_social_app()
     except Exception as e:
         logger.error(f"Error in setup_google_social_app: {e}")
 

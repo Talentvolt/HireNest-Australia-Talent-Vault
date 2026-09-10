@@ -1,98 +1,44 @@
-import os
-from django.core.management.base import BaseCommand
-from django.contrib.sites.models import Site
-from allauth.socialaccount.models import SocialApp
 from django.conf import settings
+from django.contrib.sites.models import Site
+from django.core.management.base import BaseCommand
+from allauth.socialaccount.models import SocialApp
+
+from apps.accounts.apps import sync_google_social_app
+
+
+def _mask(value):
+    if not value:
+        return "(not set)"
+    value = str(value)
+    return value if len(value) <= 24 else value[:24] + "..."
 
 
 class Command(BaseCommand):
     help = (
-        "Automatically verify and configure django.contrib.sites (Site id=1) "
-        "and Google SocialApp for allauth OAuth login."
+        "Verify/configure the Site and the single Google SocialApp used by "
+        "django-allauth, using GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET from the "
+        "environment. Removes stale/duplicate Google apps. Never prints the secret."
     )
 
     def handle(self, *args, **options):
+        sync_google_social_app()
+
         site_id = getattr(settings, "SITE_ID", 1)
-        site_domain = getattr(settings, "SITE_DOMAIN", "hirenest.com.au")
-        site_name = getattr(settings, "SITE_NAME", "HireNest Australia")
-        site, created_site = Site.objects.get_or_create(
-            id=site_id,
-            defaults={"domain": site_domain, "name": site_name},
+        site = Site.objects.filter(id=site_id).first()
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Site ID {site_id} -> domain={site.domain if site else '(missing)'!r} "
+                f"name={site.name if site else '(missing)'!r}"
+            )
         )
-        if not created_site and site.domain in ("talent-vault.in", "example.com") and site.domain != site_domain:
-            site.domain = site_domain
-            site.name = site_name
-            site.save(update_fields=["domain", "name"])
-        if created_site:
+
+        google_apps = SocialApp.objects.filter(provider="google").order_by("id")
+        self.stdout.write(f"Google SocialApp count: {google_apps.count()}")
+        for app in google_apps:
+            domains = list(app.sites.values_list("domain", flat=True))
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Created Site ID {site.id} ('{site.domain}')"
-                )
-            )
-        else:
-            self.stdout.write(f"Site ID {site.id} exists ('{site.domain}')")
-
-        # Handle GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET with defensive cleaning
-        client_id = os.environ.get("GOOGLE_CLIENT_ID", "") or getattr(
-            settings, "GOOGLE_CLIENT_ID", ""
-        )
-        if client_id.startswith("GOOGLE_CLIENT_ID="):
-            client_id = client_id.replace("GOOGLE_CLIENT_ID=", "", 1)
-
-        client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "") or getattr(
-            settings, "GOOGLE_CLIENT_SECRET", ""
-        )
-        if client_secret.startswith("GOOGLE_CLIENT_SECRET="):
-            client_secret = client_secret.replace("GOOGLE_CLIENT_SECRET=", "", 1)
-
-        effective_client_id = (
-            client_id if client_id else "placeholder-google-client-id"
-        )
-        effective_client_secret = (
-            client_secret if client_secret else "placeholder-google-client-secret"
-        )
-
-        app, created_app = SocialApp.objects.get_or_create(
-            provider="google",
-            defaults={
-                "name": "Google",
-                "client_id": effective_client_id,
-                "secret": effective_client_secret,
-            },
-        )
-
-        updated = False
-        if client_id and app.client_id != client_id:
-            app.client_id = client_id
-            updated = True
-        if client_secret and app.secret != client_secret:
-            app.secret = client_secret
-            updated = True
-
-        if updated:
-            app.save()
-
-        if site not in app.sites.all():
-            app.sites.add(site)
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Attached Google SocialApp (ID {app.id}) to Site ID {site.id}"
-                )
-            )
-
-        if created_app:
-            self.stdout.write(
-                self.style.SUCCESS(f"Created Google SocialApp (ID {app.id})")
-            )
-        elif updated:
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Updated Google SocialApp (ID {app.id}) with credentials from environment"
-                )
-            )
-        else:
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Google SocialApp (ID {app.id}) verified and linked to Site ID {site.id}"
+                    f"  id={app.id} provider={app.provider!r} "
+                    f"client_id={_mask(app.client_id)} sites={domains}"
                 )
             )
