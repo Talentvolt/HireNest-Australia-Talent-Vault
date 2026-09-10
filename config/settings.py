@@ -364,6 +364,16 @@ SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 
+# The custom User model (apps.accounts.User) has NO username field; email is
+# the USERNAME_FIELD. Tell django-allauth this explicitly, otherwise its
+# populate_username()/generate_unique_username() look up a "username" field and
+# raise FieldDoesNotExist during the Google callback.
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email'
+ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+ACCOUNT_UNIQUE_EMAIL = True
+
 # Force the OAuth callback protocol from SITE_URL. In production SITE_URL is
 # https://hirenest.com.au, so allauth always builds:
 #   https://hirenest.com.au/accounts/google/login/callback/

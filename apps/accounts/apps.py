@@ -208,7 +208,28 @@ class AccountsConfig(AppConfig):
     def ready(self):
         post_migrate.connect(create_default_recruiter, sender=self)
         post_migrate.connect(setup_google_social_app)
-        
+
+        # Log the effective Google OAuth configuration at startup so it is visible
+        # in production logs. The client secret is never logged.
+        try:
+            from django.conf import settings
+            client_id = _clean_google_env('GOOGLE_CLIENT_ID')
+            masked = (
+                f"{client_id[:8]}...{client_id[-8:]}"
+                if len(client_id) > 20 else (client_id or '(missing)')
+            )
+            logger.info(
+                "HireNest Google OAuth startup: SITE_DOMAIN=%s SITE_URL=%s client_id=%s "
+                "protocol=%s proxy_ssl_header=%s",
+                getattr(settings, 'SITE_DOMAIN', ''),
+                getattr(settings, 'SITE_URL', ''),
+                masked,
+                getattr(settings, 'ACCOUNT_DEFAULT_HTTP_PROTOCOL', ''),
+                getattr(settings, 'SECURE_PROXY_SSL_HEADER', None),
+            )
+        except Exception as cfg_err:
+            logger.error(f"Error logging Google OAuth startup config: {cfg_err}")
+
         # Enforce prompt=select_account, access_type=offline, include_granted_scopes=true on GoogleProvider
         try:
             from allauth.socialaccount.providers.google.provider import GoogleProvider

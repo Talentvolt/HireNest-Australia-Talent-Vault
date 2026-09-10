@@ -354,6 +354,28 @@ class HireNestAustraliaStandaloneTests(TestCase):
         if expected:
             self.assertEqual(app.client_id, expected)
 
+    def test_allauth_configured_for_username_less_custom_user(self):
+        from django.conf import settings as dj_settings
+        from django.test import RequestFactory
+        from allauth.account.adapter import get_adapter as get_account_adapter
+
+        # allauth must know the custom User model has no username field.
+        self.assertIsNone(dj_settings.ACCOUNT_USER_MODEL_USERNAME_FIELD)
+        self.assertEqual(dj_settings.ACCOUNT_USER_MODEL_EMAIL_FIELD, 'email')
+        self.assertIn('email', dj_settings.ACCOUNT_LOGIN_METHODS)
+        self.assertNotIn('username', dj_settings.ACCOUNT_SIGNUP_FIELDS)
+
+        # This is the exact call allauth makes during Google auto-signup; it used
+        # to raise FieldDoesNotExist("User has no field named 'username'").
+        user = User.objects.create_user(
+            email='username.less@gmail.com',
+            role=User.Role.CANDIDATE,
+            is_active=True,
+        )
+        request = RequestFactory().get('/accounts/google/login/callback/')
+        get_account_adapter().populate_username(request, user)
+        self.assertEqual(user.email, 'username.less@gmail.com')
+
     # --------------------------------------------------------------------------
     # 6. Branded Candidate Onboarding Tests
     # --------------------------------------------------------------------------
