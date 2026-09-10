@@ -364,6 +364,12 @@ SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = 'none'
 
+# Force the OAuth callback protocol from SITE_URL. In production SITE_URL is
+# https://hirenest.com.au, so allauth always builds:
+#   https://hirenest.com.au/accounts/google/login/callback/
+# even if a proxy header is missing. Locally SITE_URL is http, so it stays http.
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https' if SITE_URL.startswith('https://') else 'http'
+
 # ==============================================================================
 # SMTP & Email Delivery Configuration (HireNest Australia OTP Engine)
 # ==============================================================================

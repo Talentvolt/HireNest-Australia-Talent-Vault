@@ -124,50 +124,59 @@ def setup_google_social_app(sender, **kwargs):
             site_domain = getattr(settings, 'SITE_DOMAIN', 'hirenest.com.au')
             site_name = getattr(settings, 'SITE_NAME', 'HireNest Australia')
 
-            site, site_created = Site.objects.get_or_create(
+            site, _ = Site.objects.get_or_create(
                 id=site_id,
                 defaults={'domain': site_domain, 'name': site_name}
             )
-            # Replace legacy hard-coded domains so the site reflects the current
-            # environment (local 127.0.0.1:8002 or production hirenest.com.au).
-            if not site_created and site.domain in ('talent-vault.in', 'example.com') and site.domain != site_domain:
+            # Keep the Site in sync with SITE_URL/SITE_DOMAIN so allauth resolves
+            # the Google SocialApp for the production domain (hirenest.com.au).
+            if site.domain != site_domain or site.name != site_name:
                 site.domain = site_domain
                 site.name = site_name
                 site.save(update_fields=['domain', 'name'])
 
-            client_id = os.environ.get('GOOGLE_CLIENT_ID', '') or getattr(settings, 'GOOGLE_CLIENT_ID', '')
-            if client_id.startswith("GOOGLE_CLIENT_ID="):
-                client_id = client_id.replace("GOOGLE_CLIENT_ID=", "", 1)
+            def _clean_env(name):
+                value = os.environ.get(name, '') or getattr(settings, name, '') or ''
+                value = value.strip()
+                prefix = f"{name}="
+                if value.startswith(prefix):
+                    value = value[len(prefix):].strip()
+                return value
 
-            client_secret = os.environ.get('GOOGLE_CLIENT_SECRET', '') or getattr(settings, 'GOOGLE_CLIENT_SECRET', '')
-            if client_secret.startswith("GOOGLE_CLIENT_SECRET="):
-                client_secret = client_secret.replace("GOOGLE_CLIENT_SECRET=", "", 1)
+            client_id = _clean_env('GOOGLE_CLIENT_ID')
+            client_secret = _clean_env('GOOGLE_CLIENT_SECRET')
 
-            effective_client_id = client_id if client_id else "placeholder-google-client-id"
-            effective_client_secret = client_secret if client_secret else "placeholder-google-client-secret"
-
-            app, _ = SocialApp.objects.get_or_create(
-                provider='google',
-                defaults={
-                    'name': 'Google',
-                    'client_id': effective_client_id,
-                    'secret': effective_client_secret,
-                }
+            # Prefer the Google app attached to this site, otherwise any Google app.
+            app = (
+                SocialApp.objects.filter(provider='google', sites=site).first()
+                or SocialApp.objects.filter(provider='google').order_by('id').first()
             )
+            if app is None:
+                app = SocialApp(provider='google', name='Google')
 
-            updated = False
-            if client_id and app.client_id != client_id:
+            app.name = 'Google'
+            if client_id:
                 app.client_id = client_id
-                updated = True
-            if client_secret and app.secret != client_secret:
+            elif not app.client_id:
+                app.client_id = 'placeholder-google-client-id'
+            if client_secret:
                 app.secret = client_secret
-                updated = True
-
-            if updated:
-                app.save()
+            elif not app.secret:
+                app.secret = 'placeholder-google-client-secret'
+            app.save()
 
             if site not in app.sites.all():
                 app.sites.add(site)
+
+            if client_id:
+                logger.info(
+                    "Google OAuth SocialApp synced for %s (client_id=%s...)",
+                    site_domain, client_id[:24],
+                )
+            else:
+                logger.warning(
+                    "GOOGLE_CLIENT_ID is not set; Google OAuth is using a placeholder client id."
+                )
     except Exception as e:
         logger.error(f"Error in setup_google_social_app: {e}")
 
