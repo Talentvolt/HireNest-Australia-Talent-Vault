@@ -1,18 +1,21 @@
 import logging
-import traceback
+
+from allauth.account.adapter import DefaultAccountAdapter
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from apps.accounts.models import User
-from apps.companies.models import Company, CompanyMember
 from allauth.socialaccount.models import SocialAccount
 from allauth.account.models import EmailAddress
 
+from apps.accounts.models import User
+from apps.companies.models import Company, CompanyMember
+
 logger = logging.getLogger(__name__)
+
 
 class MySocialAccountAdapter(DefaultSocialAccountAdapter):
     def populate_user_profile(self, user, sociallogin):
         try:
             extra_data = sociallogin.account.extra_data
-            
+
             # Update first and last name from Google extra_data
             if 'name' in extra_data:
                 user.first_name = extra_data.get('given_name', '')
@@ -21,11 +24,11 @@ class MySocialAccountAdapter(DefaultSocialAccountAdapter):
                     user.first_name = extra_data.get('name', '')
             if 'picture' in extra_data:
                 user.profile_picture = extra_data.get('picture', '')
-                
+
             # Ensure user role is RECRUITER
             user.role = User.Role.RECRUITER
             user.save()
-            
+
             # Ensure default company association exists for dashboard integrity
             try:
                 company, _ = Company.objects.get_or_create(
@@ -37,7 +40,6 @@ class MySocialAccountAdapter(DefaultSocialAccountAdapter):
                         'location': 'Remote'
                     }
                 )
-                # Associate user to this company as Admin / Recruiter
                 CompanyMember.objects.get_or_create(
                     company=company,
                     user=user,
@@ -54,8 +56,6 @@ class MySocialAccountAdapter(DefaultSocialAccountAdapter):
 
     def pre_social_login(self, request, sociallogin):
         try:
-            # If user is currently logged in, but selecting a different Google account (or re-authenticating),
-            # clear the previous session so the user logs in fresh as the selected Google account.
             if request and hasattr(request, 'user') and request.user.is_authenticated:
                 email = getattr(sociallogin.user, 'email', None) or sociallogin.account.extra_data.get('email')
                 target_user = getattr(sociallogin, 'user', None)
@@ -63,40 +63,29 @@ class MySocialAccountAdapter(DefaultSocialAccountAdapter):
                     from django.contrib.auth import logout
                     logout(request)
 
-            # If the account is already associated with a user, proceed with profile updates
             if sociallogin.is_existing:
                 self.populate_user_profile(sociallogin.user, sociallogin)
                 return
-                
+
             email = sociallogin.user.email
             if not email:
                 return
-                
+
             try:
-                user = User.objects.get(email=email)
-                # Manually link the SocialAccount record to the existing user in DB
+                user = User.objects.get(email__iexact=email)
                 SocialAccount.objects.get_or_create(
                     user=user,
                     provider=sociallogin.account.provider,
                     uid=sociallogin.account.uid,
-                    defaults={
-                        'extra_data': sociallogin.account.extra_data
-                    }
+                    defaults={'extra_data': sociallogin.account.extra_data}
                 )
-                
-                # Ensure EmailAddress record exists and is marked primary & verified
                 EmailAddress.objects.get_or_create(
                     user=user,
                     email=email,
                     defaults={'verified': True, 'primary': True}
                 )
-                
-                # Link the current social login session to this existing user
                 sociallogin.user = user
-                
-                # Populate profile and company settings
                 self.populate_user_profile(user, sociallogin)
-                
             except User.DoesNotExist:
                 pass
         except Exception as pre_login_err:
@@ -105,7 +94,6 @@ class MySocialAccountAdapter(DefaultSocialAccountAdapter):
 
     def save_user(self, request, sociallogin, form=None):
         try:
-            # Let allauth save the user model first
             user = super().save_user(request, sociallogin, form)
             self.populate_user_profile(user, sociallogin)
             return user
@@ -119,9 +107,18 @@ class MySocialAccountAdapter(DefaultSocialAccountAdapter):
 
 
 class CandidateSocialAccountAdapter(DefaultSocialAccountAdapter):
+    """
+    allauth social adapter used exclusively for HireNest Australia candidate
+    "Continue with Google" authentication.
+
+    Reuses the existing User + CandidateProfile models and the Google SocialApp
+    configured from environment variables (no hardcoded secrets). Employer
+    authentication is untouched because employers sign in with email/password.
+    """
+
     def populate_user(self, request, sociallogin, data):
         user = super().populate_user(request, sociallogin, data)
-        # For new users signup, set role to CANDIDATE
+        # For new user signups, always provision a CANDIDATE identity.
         user.role = User.Role.CANDIDATE
         user.is_verified = True
         user.is_active = True
@@ -129,51 +126,38 @@ class CandidateSocialAccountAdapter(DefaultSocialAccountAdapter):
 
     def populate_user_profile(self, user, sociallogin):
         try:
-            extra_data = sociallogin.account.extra_data
-            
-            # Update first and last name from Google extra_data
+            extra_data = sociallogin.account.extra_data or {}
+
             if 'name' in extra_data:
-                user.first_name = extra_data.get('given_name', '')
-                user.last_name = extra_data.get('family_name', '')
+                user.first_name = extra_data.get('given_name', '') or user.first_name
+                user.last_name = extra_data.get('family_name', '') or user.last_name
                 if not user.first_name and not user.last_name:
                     user.first_name = extra_data.get('name', '')
-            if 'picture' in extra_data:
+            if 'picture' in extra_data and not user.profile_picture:
                 user.profile_picture = extra_data.get('picture', '')
-                
             user.save()
-            
-            # Automatically create CandidateProfile if the user's role is CANDIDATE
+
             if user.role == User.Role.CANDIDATE:
-                from apps.candidates.models import CandidateProfile
-                full_name = f"{user.first_name} {user.last_name}".strip() or "Google User"
-                profile, created = CandidateProfile.objects.get_or_create(
-                    user=user,
-                    defaults={
-                        'full_name': full_name,
-                        'location': "Bangalore, India"
-                    }
+                from apps.accounts.services.candidate_social import (
+                    get_or_create_candidate_from_social,
                 )
-                
-                # Fetch and save profile photo if available
-                picture_url = extra_data.get('picture')
-                if picture_url and not profile.profile_photo:
-                    try:
-                        import requests
-                        from django.core.files.base import ContentFile
-                        response = requests.get(picture_url, timeout=10)
-                        if response.status_code == 200:
-                            profile.profile_photo.save(f"photo_{profile.id}.jpg", ContentFile(response.content), save=True)
-                    except Exception as img_err:
-                        logger.error(f"Error downloading Google profile picture: {img_err}")
-                        
+                get_or_create_candidate_from_social(
+                    email=user.email,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    full_name=extra_data.get('name', ''),
+                    picture=user.profile_picture or extra_data.get('picture', ''),
+                )
         except Exception as profile_err:
             logger.error(f"Error in populate_user_profile: {profile_err}")
             raise profile_err
 
     def pre_social_login(self, request, sociallogin):
+        """
+        Link an incoming Google identity to an existing account with the same
+        email (case-insensitive) so a duplicate account is never created.
+        """
         try:
-            # If user is currently logged in, but selecting a different Google account (or re-authenticating),
-            # clear the previous session so the user logs in fresh as the selected Google account.
             if request and hasattr(request, 'user') and request.user.is_authenticated:
                 email = getattr(sociallogin.user, 'email', None) or sociallogin.account.extra_data.get('email')
                 target_user = getattr(sociallogin, 'user', None)
@@ -181,40 +165,29 @@ class CandidateSocialAccountAdapter(DefaultSocialAccountAdapter):
                     from django.contrib.auth import logout
                     logout(request)
 
-            # If the account is already associated with a user, proceed with profile updates
             if sociallogin.is_existing:
                 self.populate_user_profile(sociallogin.user, sociallogin)
                 return
-                
+
             email = sociallogin.user.email
             if not email:
                 return
-                
+
             try:
-                user = User.objects.get(email=email)
-                # Manually link the SocialAccount record to the existing user in DB
+                user = User.objects.get(email__iexact=email)
                 SocialAccount.objects.get_or_create(
                     user=user,
                     provider=sociallogin.account.provider,
                     uid=sociallogin.account.uid,
-                    defaults={
-                        'extra_data': sociallogin.account.extra_data
-                    }
+                    defaults={'extra_data': sociallogin.account.extra_data}
                 )
-                
-                # Ensure EmailAddress record exists and is marked primary & verified
                 EmailAddress.objects.get_or_create(
                     user=user,
                     email=email,
                     defaults={'verified': True, 'primary': True}
                 )
-                
-                # Link the current social login session to this existing user
                 sociallogin.user = user
-                
-                # Populate profile settings
                 self.populate_user_profile(user, sociallogin)
-                
             except User.DoesNotExist:
                 pass
         except Exception as pre_login_err:
@@ -223,7 +196,6 @@ class CandidateSocialAccountAdapter(DefaultSocialAccountAdapter):
 
     def save_user(self, request, sociallogin, form=None):
         try:
-            # Let allauth save the user model first
             user = super().save_user(request, sociallogin, form)
             self.populate_user_profile(user, sociallogin)
             return user
@@ -234,3 +206,32 @@ class CandidateSocialAccountAdapter(DefaultSocialAccountAdapter):
     def on_authentication_error(self, request, provider, error=None, exception=None, extra_context=None):
         logger.error(f"GOOGLE OAUTH AUTHENTICATION ERROR Provider: {provider}, Error: {error}, Exception: {exception}")
         super().on_authentication_error(request, provider, error, exception, extra_context)
+
+
+class CandidateAccountAdapter(DefaultAccountAdapter):
+    """
+    Account adapter that routes candidates after sign-in.
+
+    New / incomplete candidates are sent to the branded onboarding flow while
+    candidates with a completed profile go straight to the dashboard. Non
+    candidate accounts fall back to the default redirect behaviour.
+    """
+
+    @staticmethod
+    def _candidate_redirect(user):
+        profile = getattr(user, 'candidate_profile', None)
+        if profile is not None and profile.is_onboarding_complete:
+            return '/dashboard/'
+        return '/onboarding/'
+
+    def get_login_redirect_url(self, request):
+        user = getattr(request, 'user', None)
+        if user is not None and user.is_authenticated and getattr(user, 'role', None) == User.Role.CANDIDATE:
+            return self._candidate_redirect(user)
+        return super().get_login_redirect_url(request)
+
+    def get_signup_redirect_url(self, request):
+        user = getattr(request, 'user', None)
+        if user is not None and user.is_authenticated and getattr(user, 'role', None) == User.Role.CANDIDATE:
+            return self._candidate_redirect(user)
+        return super().get_signup_redirect_url(request)

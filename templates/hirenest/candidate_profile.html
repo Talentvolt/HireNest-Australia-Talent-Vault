@@ -16,6 +16,7 @@
             <div class="d-flex gap-2 mt-2 mt-sm-0">
                 <a href="/applications/" class="btn btn-outline-primary"><i class="bi bi-file-earmark-check me-1"></i>My Applications</a>
                 <a href="/saved-jobs/" class="btn btn-outline-secondary"><i class="bi bi-bookmark-heart me-1"></i>Saved Jobs</a>
+                <a href="/logout/" class="btn btn-light border"><i class="bi bi-box-arrow-right me-1"></i>Sign Out</a>
             </div>
         </div>
 
@@ -117,12 +118,12 @@
                                         </a>
                                     </div>
                                 </div>
-                                <label class="hn-form-label small">Upload Updated Resume (PDF only, max 10MB):</label>
+                                <label class="hn-form-label small">Upload Updated Resume (PDF, DOC or DOCX, max 10MB):</label>
                             {% else %}
                                 <div class="text-muted small mb-2"><i class="bi bi-info-circle me-1"></i>No Resume Uploaded / Resume not available</div>
-                                <label class="hn-form-label">Upload Your Resume (PDF only, max 10MB):</label>
+                                <label class="hn-form-label">Upload Your Resume (PDF, DOC or DOCX, max 10MB):</label>
                             {% endif %}
-                            <input type="file" name="resume" class="form-control hn-form-control" accept=".pdf">
+                            <input type="file" name="resume" class="form-control hn-form-control" accept=".pdf,.doc,.docx">
                         </div>
 
                         <!-- Submit Button -->
@@ -184,6 +185,20 @@
                             <i class="bi bi-chevron-right text-muted"></i>
                         </a>
                     </div>
+                </div>
+
+                <!-- Account & Danger Zone -->
+                <div class="bg-white rounded-4 border p-4 shadow-sm">
+                    <h4 class="fs-6 fw-bold text-dark mb-3"><i class="bi bi-gear me-2 text-secondary"></i>Account</h4>
+                    <a href="/logout/" class="btn btn-light border w-100 text-start mb-2">
+                        <i class="bi bi-box-arrow-right me-2 text-primary"></i>Sign Out
+                    </a>
+                    <hr class="my-3">
+                    <div class="text-danger fw-semibold small mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Danger Zone</div>
+                    <p class="text-muted small mb-2">Permanently delete your candidate account and all associated data.</p>
+                    <a href="/profile/delete/" class="btn btn-outline-danger w-100">
+                        <i class="bi bi-trash3 me-2"></i>Delete Account
+                    </a>
                 </div>
 
             </div>

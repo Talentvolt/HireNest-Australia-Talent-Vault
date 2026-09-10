@@ -1,12 +1,13 @@
 import os
 import json
-import pytest
-from datetime import timedelta
+from types import SimpleNamespace
 from decimal import Decimal
 from django.test import TestCase, Client
 from django.conf import settings
-from django.utils import timezone
-from apps.accounts.models import User, OTPVerification
+from django.core.files.uploadedfile import SimpleUploadedFile
+from apps.accounts.models import User
+from apps.accounts.adapters import CandidateAccountAdapter
+from apps.accounts.services.candidate_social import get_or_create_candidate_from_social
 from apps.companies.models import Company, CompanyMember
 from apps.jobs.models import Job, JobSkill
 from apps.candidates.models import CandidateProfile, SavedJob
@@ -124,6 +125,29 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(response, "Career Support")
         self.assertContains(response, "Senior Python Backend Engineer")
         self.assertContains(response, "Atlassian Australia")
+
+    def test_public_navbar_always_shows_public_auth_buttons(self):
+        # The public navbar always shows the same items, regardless of auth state.
+        def assert_public_navbar(resp):
+            self.assertContains(resp, "For Employers")
+            self.assertContains(resp, "Log In")
+            self.assertContains(resp, "Sign In / Register")
+            self.assertNotContains(resp, "Recruiter Workspace")
+            self.assertNotContains(resp, "Admin Workspace")
+
+        assert_public_navbar(self.client.get('/'))
+
+        self.client.force_login(self.candidate_user)
+        assert_public_navbar(self.client.get('/'))
+
+        self.client.force_login(self.recruiter_user)
+        assert_public_navbar(self.client.get('/'))
+
+        admin_user = User.objects.create_superuser(
+            email="navbar.admin@hirenest.com.au", password="AdminPassword123!"
+        )
+        self.client.force_login(admin_user)
+        assert_public_navbar(self.client.get('/'))
 
     # --------------------------------------------------------------------------
     # 2. Strict Backend-Enforced Australia Jobs Only Filtering Tests
@@ -246,161 +270,202 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(response, "Apply for this Role")
 
     # --------------------------------------------------------------------------
-    # 5. Candidate Email + OTP Authentication Flow Tests
+    # 5. Candidate "Continue with Google" Authentication Tests
     # --------------------------------------------------------------------------
-    def test_send_otp_success_and_rate_limiting(self):
-        test_email = "newcandidate.alex@gmail.com"
+    def test_candidate_auth_pages_use_google_only(self):
+        login_resp = self.client.get('/login/')
+        self.assertEqual(login_resp.status_code, 200)
+        self.assertContains(login_resp, "Continue with Google")
+        self.assertNotContains(login_resp, "verification code")
+        self.assertNotContains(login_resp, "Send verification")
 
-        # 1. First OTP request
-        resp1 = self.client.post(
-            '/auth/send-otp/',
-            data=json.dumps({'email': test_email}),
-            content_type='application/json'
+        register_resp = self.client.get('/register/')
+        self.assertEqual(register_resp.status_code, 200)
+        self.assertContains(register_resp, "Continue with Google")
+        self.assertNotContains(register_resp, "Send Verification Code")
+        self.assertNotContains(register_resp, "6-Digit")
+
+    def test_google_provisioning_creates_single_candidate_account(self):
+        user, created, profile_created = get_or_create_candidate_from_social(
+            email='emma.watson@gmail.com',
+            first_name='Emma',
+            last_name='Watson',
+            picture='https://example.com/emma.jpg',
         )
-        self.assertEqual(resp1.status_code, 200)
-        data1 = resp1.json()
-        self.assertTrue(data1.get('success'))
-        self.assertEqual(data1.get('cooldown'), 60)
+        self.assertTrue(created)
+        self.assertTrue(profile_created)
+        self.assertEqual(user.role, User.Role.CANDIDATE)
+        self.assertTrue(user.is_verified)
+        self.assertTrue(CandidateProfile.objects.filter(user=user).exists())
+        self.assertFalse(user.candidate_profile.is_onboarding_complete)
 
-        # Verify record in database
-        otp_rec = OTPVerification.objects.filter(email=test_email).first()
-        self.assertIsNotNone(otp_rec)
-        self.assertFalse(otp_rec.verified)
-
-        # 2. Immediate second request triggers rate limit cooldown (HTTP 429)
-        resp2 = self.client.post(
-            '/auth/send-otp/',
-            data=json.dumps({'email': test_email}),
-            content_type='application/json'
+        # A second Google sign-in for the same email must not duplicate the account.
+        user2, created2, _ = get_or_create_candidate_from_social(
+            email='Emma.Watson@gmail.com',
+            first_name='Emma',
+            last_name='Watson',
         )
-        self.assertEqual(resp2.status_code, 429)
-        self.assertFalse(resp2.json().get('success'))
+        self.assertFalse(created2)
+        self.assertEqual(user2.pk, user.pk)
+        self.assertEqual(User.objects.filter(email__iexact='emma.watson@gmail.com').count(), 1)
 
-    def test_verify_otp_valid_and_creates_candidate_identity(self):
-        test_email = "alex.turner@gmail.com"
-        raw_code = "654321"
+    def test_google_redirect_routes_to_onboarding_or_dashboard(self):
+        adapter = CandidateAccountAdapter()
 
-        otp_rec = OTPVerification(
-            email=test_email,
-            expires_at=timezone.now() + timedelta(minutes=10)
+        # Existing candidate with a completed profile -> dashboard.
+        completed = SimpleNamespace(user=self.candidate_user)
+        self.assertTrue(self.candidate_profile.is_onboarding_complete)
+        self.assertEqual(adapter.get_login_redirect_url(completed), '/dashboard/')
+
+        # Brand new candidate with an incomplete profile -> onboarding.
+        new_user, _, _ = get_or_create_candidate_from_social(
+            email='brand.new.candidate@gmail.com', full_name='Brand New'
         )
-        otp_rec.set_otp(raw_code)
-        otp_rec.save()
-
-        verify_resp = self.client.post(
-            '/auth/verify-otp/',
-            data=json.dumps({'email': test_email, 'otp': raw_code}),
-            content_type='application/json'
-        )
-        self.assertEqual(verify_resp.status_code, 200)
-        data = verify_resp.json()
-        self.assertTrue(data.get('success'))
-        self.assertTrue(data.get('is_new'))
-        self.assertTrue(data.get('onboarding_required'))
-
-        # Verify user and candidate profile created in shared DB
-        created_user = User.objects.filter(email=test_email).first()
-        self.assertIsNotNone(created_user)
-        self.assertEqual(created_user.role, User.Role.CANDIDATE)
-        self.assertTrue(created_user.is_verified)
-        self.assertTrue(CandidateProfile.objects.filter(user=created_user).exists())
-
-    def test_verify_otp_invalid_and_expired(self):
-        test_email = "invalid.test@gmail.com"
-        raw_code = "123456"
-
-        otp_rec = OTPVerification(
-            email=test_email,
-            expires_at=timezone.now() + timedelta(minutes=10)
-        )
-        otp_rec.set_otp(raw_code)
-        otp_rec.save()
-
-        # 1. Wrong OTP code
-        bad_resp = self.client.post(
-            '/auth/verify-otp/',
-            data=json.dumps({'email': test_email, 'otp': '999999'}),
-            content_type='application/json'
-        )
-        self.assertEqual(bad_resp.status_code, 400)
-        self.assertFalse(bad_resp.json().get('success'))
-
-        # 2. Expired OTP record
-        otp_rec.expires_at = timezone.now() - timedelta(minutes=5)
-        otp_rec.save()
-
-        expired_resp = self.client.post(
-            '/auth/verify-otp/',
-            data=json.dumps({'email': test_email, 'otp': raw_code}),
-            content_type='application/json'
-        )
-        self.assertEqual(expired_resp.status_code, 400)
-        self.assertIn("expired", expired_resp.json().get('error', '').lower())
+        incomplete = SimpleNamespace(user=new_user)
+        self.assertFalse(new_user.candidate_profile.is_onboarding_complete)
+        self.assertEqual(adapter.get_login_redirect_url(incomplete), '/onboarding/')
 
     # --------------------------------------------------------------------------
-    # 6. Social Auth (Google / Apple) Endpoint Tests
+    # 6. Branded Candidate Onboarding Tests
     # --------------------------------------------------------------------------
-    def test_social_auth_google_and_apple(self):
-        # 1. Google sign-in
-        google_resp = self.client.post(
-            '/auth/social/',
-            data=json.dumps({
-                'provider': 'google',
-                'email': 'emma.watson@gmail.com',
-                'name': 'Emma Watson',
-            }),
-            content_type='application/json'
+    def test_candidate_onboarding_page_and_submission(self):
+        new_user = User.objects.create_user(
+            email='onboard.me@gmail.com',
+            first_name='Onboard',
+            last_name='Me',
+            role=User.Role.CANDIDATE,
+            is_active=True,
+            is_verified=True,
         )
-        self.assertEqual(google_resp.status_code, 200)
-        self.assertTrue(google_resp.json().get('success'))
-
-        user_emma = User.objects.filter(email='emma.watson@gmail.com').first()
-        self.assertIsNotNone(user_emma)
-        self.assertEqual(user_emma.role, User.Role.CANDIDATE)
-
-        # 2. Apple sign-in linking existing user
-        apple_resp = self.client.post(
-            '/auth/social/',
-            data=json.dumps({
-                'provider': 'apple',
-                'email': 'emma.watson@gmail.com',
-                'name': 'Emma Watson',
-            }),
-            content_type='application/json'
+        CandidateProfile.objects.create(
+            user=new_user, full_name='Onboard Me', location='Sydney NSW', candidate_status='ACTIVE'
         )
-        self.assertEqual(apple_resp.status_code, 200)
-        self.assertTrue(apple_resp.json().get('success'))
-        # No duplicate user created
-        self.assertEqual(User.objects.filter(email='emma.watson@gmail.com').count(), 1)
+        self.client.force_login(new_user)
+
+        page = self.client.get('/onboarding/')
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "set up your candidate profile")
+        self.assertContains(page, "Citizenship / Work Rights")
+        self.assertContains(page, "Preferred Job Category")
+
+        resume = SimpleUploadedFile(
+            "resume.pdf", b"%PDF-1.4 test resume", content_type="application/pdf"
+        )
+        post_resp = self.client.post('/onboarding/', data={
+            'first_name': 'Onboard',
+            'last_name': 'Me',
+            'phone_number': '+61 400 555 666',
+            'location': 'Melbourne VIC',
+            'citizenship': 'Australian Citizen',
+            'preferred_job_category': 'IT & Software Development',
+            'work_type': 'FULL_TIME',
+            'preferred_job_role': 'Backend Engineer',
+            'resume': resume,
+        }, follow=True)
+        self.assertEqual(post_resp.status_code, 200)
+
+        new_user.refresh_from_db()
+        profile = new_user.candidate_profile
+        profile.refresh_from_db()
+        self.assertEqual(new_user.phone_number, '+61 400 555 666')
+        self.assertEqual(profile.full_name, 'Onboard Me')
+        self.assertIn('Melbourne', profile.location)
+        self.assertEqual(profile.department, 'IT & Software Development')
+        self.assertEqual(profile.employment_type, 'FULL_TIME')
+        self.assertEqual(profile.work_permit_countries, ['Australian Citizen'])
+        self.assertTrue(profile.has_resume)
+        self.assertTrue(profile.is_onboarding_complete)
+        self.assertIn('onboarding_answers', profile.parsed_json)
+
+    def test_completed_candidate_is_redirected_from_onboarding(self):
+        self.client.force_login(self.candidate_user)
+        resp = self.client.get('/onboarding/')
+        self.assertRedirects(resp, '/dashboard/')
+
+        # Explicit edit mode still allows updating preferences.
+        edit_resp = self.client.get('/onboarding/?edit=1')
+        self.assertEqual(edit_resp.status_code, 200)
+        self.assertContains(edit_resp, "set up your candidate profile")
+
+    def test_onboarding_requires_authentication(self):
+        resp = self.client.get('/onboarding/')
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/login/', resp.url)
 
     # --------------------------------------------------------------------------
-    # 7. 3-Question Onboarding Wizard API Tests
+    # 7. Candidate Account Management (Profile, Resume, Deletion) Tests
     # --------------------------------------------------------------------------
-    def test_candidate_3_question_onboarding_wizard_api(self):
-        self.client.login(email='candidate.sarah@gmail.com', password='CandidatePassword123!')
+    def test_candidate_profile_page_has_account_actions(self):
+        self.client.force_login(self.candidate_user)
+        resp = self.client.get('/profile/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "My Professional Profile")
+        self.assertContains(resp, "Sign Out")
+        self.assertContains(resp, "Delete Account")
+        self.assertContains(resp, ".pdf,.doc,.docx")
 
-        payload = {
-            'categories': ['IT & Software Development'],
-            'role_title': 'Lead Cloud Engineer',
-            'locations': ['Sydney NSW', 'Remote • Australia'],
-            'job_types': ['FULL_TIME', 'CONTRACT']
-        }
-
-        onboard_resp = self.client.post(
-            '/api/onboarding/',
-            data=json.dumps(payload),
-            content_type='application/json'
+    def test_candidate_can_update_profile_and_resume(self):
+        self.client.force_login(self.candidate_user)
+        resume = SimpleUploadedFile(
+            "updated_resume.docx",
+            b"docx-bytes",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-        self.assertEqual(onboard_resp.status_code, 200)
-        self.assertTrue(onboard_resp.json().get('success'))
+        resp = self.client.post('/profile/', data={
+            'full_name': 'Sarah Connor',
+            'phone_number': '+61 400 123 456',
+            'location': 'Sydney NSW',
+            'current_designation': 'Lead Developer',
+            'current_company': 'Atlassian',
+            'total_experience': '6.0',
+            'expected_salary': '170000',
+            'notice_period': '30',
+            'summary': 'Experienced Australian software engineer.',
+            'skills': 'Python, Django, AWS',
+            'resume': resume,
+        }, follow=True)
+        self.assertEqual(resp.status_code, 200)
 
-        # Verify saved in CandidateProfile
         self.candidate_profile.refresh_from_db()
-        self.assertEqual(self.candidate_profile.department, 'IT & Software Development')
-        self.assertEqual(self.candidate_profile.preferred_job_role, 'Lead Cloud Engineer')
-        self.assertIn('Sydney NSW', self.candidate_profile.preferred_location)
-        self.assertEqual(self.candidate_profile.employment_type, 'FULL_TIME')
-        self.assertIn('onboarding_answers', self.candidate_profile.parsed_json)
+        self.assertTrue(self.candidate_profile.has_resume)
+        self.assertEqual(self.candidate_profile.current_designation, 'Lead Developer')
+        self.assertEqual(
+            set(self.candidate_profile.skills.values_list('skill_name', flat=True)),
+            {'Python', 'Django', 'AWS'},
+        )
+
+    def test_candidate_delete_account_requires_confirmation(self):
+        self.client.force_login(self.candidate_user)
+        page = self.client.get('/profile/delete/')
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Delete your candidate account?")
+
+        # Posting without the explicit confirmation must not delete the account.
+        self.client.post('/profile/delete/', data={}, follow=True)
+        self.assertTrue(User.objects.filter(pk=self.candidate_user.pk).exists())
+
+    def test_candidate_can_delete_own_account(self):
+        user_id = self.candidate_user.pk
+        self.client.force_login(self.candidate_user)
+
+        resp = self.client.post('/profile/delete/', data={'confirm_delete': 'yes'}, follow=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, '/')
+
+        self.assertFalse(User.objects.filter(pk=user_id).exists())
+        self.assertFalse(CandidateProfile.objects.filter(user_id=user_id).exists())
+
+        # Session must be invalidated after deletion.
+        dash = self.client.get('/dashboard/')
+        self.assertEqual(dash.status_code, 302)
+        self.assertIn('/login/', dash.url)
+
+    def test_non_candidate_cannot_use_candidate_account_deletion(self):
+        self.client.force_login(self.recruiter_user)
+        resp = self.client.get('/profile/delete/', follow=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, '/')
+        self.assertTrue(User.objects.filter(pk=self.recruiter_user.pk).exists())
 
     # --------------------------------------------------------------------------
     # 8. Australian Locations Autocomplete Lookup Tests

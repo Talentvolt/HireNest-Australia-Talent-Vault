@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 import dj_database_url
 from dotenv import load_dotenv
 
@@ -9,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 TALENTVAULT_DIR = BASE_DIR.parent / '2020Tech'
 
 # Load environment variables from .env if present
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / '.env', override=True)
 
 # Ensure BASE_DIR and fallback paths are on sys.path
 if str(BASE_DIR) not in sys.path:
@@ -77,14 +78,10 @@ else:
         'https://www.hirenest.com.au',
         'https://*.onrender.com',
         'https://*.render.com',
-        # Local development origins across common ports (including 8000, 8001, 8002, 8080, 3000, 5000)
+        # Local development origins (HireNest Australia runs on port 8002 locally)
         'http://localhost',
         'http://127.0.0.1',
         'http://0.0.0.0',
-        'http://localhost:8000',
-        'http://127.0.0.1:8000',
-        'http://localhost:8001',
-        'http://127.0.0.1:8001',
         'http://localhost:8002',
         'http://127.0.0.1:8002',
         'http://localhost:8080',
@@ -156,6 +153,7 @@ INSTALLED_APPS = [
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
 
     # Shared TalentVault Core & Database Models
     'apps.core',
@@ -173,6 +171,17 @@ INSTALLED_APPS = [
 ]
 
 SITE_ID = 1
+
+# ==============================================================================
+# Public Site URL / Domain (used by django.contrib.sites and django-allauth)
+# Local:      http://127.0.0.1:8002
+# Production: https://hirenest.com.au
+# The OAuth callback itself is always derived from the current request host,
+# so absolute redirects never fall back to a hard-coded port.
+# ==============================================================================
+SITE_URL = os.environ.get('SITE_URL', 'https://hirenest.com.au').rstrip('/')
+SITE_DOMAIN = urlparse(SITE_URL).netloc or 'hirenest.com.au'
+SITE_NAME = os.environ.get('SITE_NAME', 'HireNest Australia')
 
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
@@ -339,5 +348,41 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 LOGIN_URL = '/login/'
-LOGIN_REDIRECT_URL = '/profile/'
+LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/'
+
+# ==============================================================================
+# HireNest Australia Candidate "Continue with Google" (django-allauth)
+# Reuses the Google SocialApp configured from environment variables.
+# Never hardcode OAuth client secrets here.
+# ==============================================================================
+SOCIALACCOUNT_ADAPTER = 'apps.accounts.adapters.CandidateSocialAccountAdapter'
+ACCOUNT_ADAPTER = 'apps.accounts.adapters.CandidateAccountAdapter'
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+
+# ==============================================================================
+# SMTP & Email Delivery Configuration (HireNest Australia OTP Engine)
+# ==============================================================================
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 't')
+EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'False').lower() in ('true', '1', 't')
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '').strip()
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '').strip()
+DEFAULT_FROM_EMAIL = (
+    os.environ.get('DEFAULT_FROM_EMAIL') or
+    (f"HireNest Australia <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else 'HireNest Australia <noreply@hirenest.com.au>')
+)
+EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', 10))
+
+if os.environ.get('EMAIL_BACKEND'):
+    EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND')
+elif EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+

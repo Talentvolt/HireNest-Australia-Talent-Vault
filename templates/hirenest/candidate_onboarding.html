@@ -1,0 +1,323 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}Complete Your Profile — HireNest Australia{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hn-onboarding-wrap {
+        background: linear-gradient(180deg, #f5f7ff 0%, #ffffff 320px);
+        min-height: 80vh;
+        padding: 2.5rem 0 4rem;
+    }
+    .hn-onboarding-shell {
+        max-width: 780px;
+        margin: 0 auto;
+    }
+    .hn-onboarding-card {
+        background: #ffffff;
+        border: 1px solid #e8eaf3;
+        border-radius: 20px;
+        box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+    }
+    .hn-onboarding-head {
+        background: #ffffff;
+        border-bottom: 1px solid #eef0f7;
+        padding: 1.75rem 2rem 1.25rem;
+    }
+    .hn-onboarding-body { padding: 1.75rem 2rem 2rem; }
+    .hn-step-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        font-size: .78rem;
+        font-weight: 700;
+        letter-spacing: .02em;
+        color: #4f46e5;
+        background: #eef0ff;
+        border-radius: 999px;
+        padding: .35rem .85rem;
+    }
+    .hn-onboarding-progress {
+        height: 6px;
+        border-radius: 999px;
+        background: #eef0f7;
+        overflow: hidden;
+        margin-top: 1rem;
+    }
+    .hn-onboarding-progress > span {
+        display: block;
+        height: 100%;
+        width: 33%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #4f46e5, #7c3aed);
+        transition: width .35s ease;
+    }
+    .hn-step { display: none; }
+    .hn-step.is-active { display: block; animation: hnFade .25s ease; }
+    @keyframes hnFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .hn-step-title { font-size: 1.25rem; font-weight: 800; color: #0f172a; }
+    .hn-step-sub { color: #64748b; font-size: .9rem; }
+    .hn-field-label { font-size: .82rem; font-weight: 700; color: #334155; margin-bottom: .35rem; }
+    .hn-field-label .req { color: #dc2626; }
+    .hn-upload-zone {
+        border: 2px dashed #c7ccf0;
+        border-radius: 14px;
+        background: #fafbff;
+        padding: 1.5rem;
+        text-align: center;
+        transition: border-color .2s ease, background .2s ease;
+    }
+    .hn-upload-zone:hover { border-color: #7c3aed; background: #f5f6ff; }
+    .hn-upload-zone.has-file { border-style: solid; border-color: #16a34a; background: #f0fdf4; }
+    .hn-choice {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: .6rem .75rem;
+        cursor: pointer;
+        font-size: .88rem;
+        font-weight: 600;
+        color: #334155;
+        transition: border-color .15s ease, background .15s ease;
+    }
+    .hn-choice:hover { border-color: #a5b4fc; background: #f8f9ff; }
+    .hn-choice input:checked ~ span { color: #4f46e5; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="hn-onboarding-wrap">
+    <div class="container-xl">
+        <div class="hn-onboarding-shell">
+
+            <div class="text-center mb-4">
+                <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" style="height: 46px; width: auto; object-fit: contain;">
+                <h1 class="fw-bold text-dark mt-3 mb-1" style="font-size: 1.65rem;">Let's set up your candidate profile</h1>
+                <p class="text-muted mb-0">A few quick details help us match you with the right Australian jobs.</p>
+            </div>
+
+            <div class="hn-onboarding-card" id="onboardingCard" data-has-errors="{% if form.errors %}true{% else %}false{% endif %}">
+                <div class="hn-onboarding-head">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <span class="hn-step-pill"><i class="bi bi-person-badge"></i> <span id="stepPill">Step 1 of 3 · About you</span></span>
+                        <span class="text-muted small"><i class="bi bi-shield-check text-success me-1"></i>Signed in with Google</span>
+                    </div>
+                    <div class="hn-onboarding-progress"><span id="onboardingProgress"></span></div>
+                </div>
+
+                <div class="hn-onboarding-body">
+
+                    {% if form.errors %}
+                        <div class="alert alert-danger rounded-3 small mb-4" role="alert">
+                            <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Please fix the following:</div>
+                            <ul class="mb-0 ps-3">
+                                {% for field, errors in form.errors.items %}
+                                    {% for error in errors %}
+                                        <li>{{ error }}</li>
+                                    {% endfor %}
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+
+                    <form method="POST" action="/onboarding/" enctype="multipart/form-data" id="onboardingForm" novalidate>
+                        {% csrf_token %}
+
+                        <!-- STEP 1: Personal details -->
+                        <div class="hn-step is-active" id="step1">
+                            <h2 class="hn-step-title mb-1">Tell us about you</h2>
+                            <p class="hn-step-sub mb-4">This is how Australian employers will see you.</p>
+
+                            <div class="row g-3">
+                                <div class="col-sm-6">
+                                    <label class="hn-field-label" for="id_first_name">First Name <span class="req">*</span></label>
+                                    <input type="text" class="form-control hn-form-control" id="id_first_name" name="first_name" value="{{ form.first_name.value|default:'' }}" placeholder="e.g. Sarah" required>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="hn-field-label" for="id_last_name">Last Name <span class="req">*</span></label>
+                                    <input type="text" class="form-control hn-form-control" id="id_last_name" name="last_name" value="{{ form.last_name.value|default:'' }}" placeholder="e.g. Jenkins" required>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="hn-field-label" for="id_phone_number">Phone Number <span class="req">*</span></label>
+                                    <input type="tel" class="form-control hn-form-control" id="id_phone_number" name="phone_number" value="{{ form.phone_number.value|default:'' }}" placeholder="+61 400 123 456" required>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="hn-field-label" for="id_location">Australian Location <span class="req">*</span></label>
+                                    <input type="text" class="form-control hn-form-control" id="id_location" name="location" value="{{ form.location.value|default:'' }}" placeholder="e.g. Sydney NSW" list="locations-list" required>
+                                    <datalist id="locations-list">
+                                        {% for loc in locations %}<option value="{{ loc }}"></option>{% endfor %}
+                                    </datalist>
+                                </div>
+                                <div class="col-12">
+                                    <label class="hn-field-label" for="id_citizenship">Citizenship / Work Rights <span class="req">*</span></label>
+                                    <select class="form-select hn-form-control" id="id_citizenship" name="citizenship" required>
+                                        <option value="">Select your work rights in Australia…</option>
+                                        {% for value, label in form.fields.citizenship.choices %}
+                                            <option value="{{ value }}" {% if form.citizenship.value == value %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-end mt-4 pt-3 border-top">
+                                <button type="button" class="btn hn-btn-primary px-4" data-next="2">Continue <i class="bi bi-arrow-right ms-1"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- STEP 2: Resume -->
+                        <div class="hn-step" id="step2">
+                            <h2 class="hn-step-title mb-1">Upload your resume</h2>
+                            <p class="hn-step-sub mb-4">PDF, DOC or DOCX · up to 10 MB. You can add or update this later.</p>
+
+                            <label class="hn-upload-zone d-block cursor-pointer" for="id_resume" id="resumeZone">
+                                <i class="bi bi-cloud-arrow-up fs-1 text-primary d-block mb-2"></i>
+                                <div class="fw-bold text-dark" id="resumeZoneTitle">Click to upload your resume</div>
+                                <div class="text-muted small" id="resumeZoneSub">Accepted formats: .pdf, .doc, .docx</div>
+                                <input type="file" id="id_resume" name="resume" accept=".pdf,.doc,.docx" class="d-none">
+                            </label>
+
+                            {% if profile.has_resume %}
+                                <div class="alert alert-success small rounded-3 mt-3 mb-0">
+                                    <i class="bi bi-file-earmark-check me-1"></i>Current resume on file: <strong>{{ profile.resume.name }}</strong>
+                                </div>
+                            {% endif %}
+
+                            <div class="d-flex justify-content-between mt-4 pt-3 border-top">
+                                <button type="button" class="btn btn-light border text-muted px-3" data-prev="1"><i class="bi bi-arrow-left me-1"></i> Back</button>
+                                <button type="button" class="btn hn-btn-primary px-4" data-next="3">Continue <i class="bi bi-arrow-right ms-1"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- STEP 3: Preferences -->
+                        <div class="hn-step" id="step3">
+                            <h2 class="hn-step-title mb-1">What work are you looking for?</h2>
+                            <p class="hn-step-sub mb-4">We'll use these preferences to recommend jobs across Australia.</p>
+
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="hn-field-label" for="id_preferred_job_category">Preferred Job Category <span class="req">*</span></label>
+                                    <select class="form-select hn-form-control" id="id_preferred_job_category" name="preferred_job_category" required>
+                                        <option value="">Select a category…</option>
+                                        {% for value, label in form.fields.preferred_job_category.choices %}
+                                            <option value="{{ value }}" {% if form.preferred_job_category.value == value %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="hn-field-label" for="id_work_type">Work Type <span class="req">*</span></label>
+                                    <select class="form-select hn-form-control" id="id_work_type" name="work_type" required>
+                                        <option value="">Select work type…</option>
+                                        {% for value, label in form.fields.work_type.choices %}
+                                            <option value="{{ value }}" {% if form.work_type.value == value %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="hn-field-label" for="id_preferred_job_role">Preferred Job Title <span class="text-muted fw-normal">(optional)</span></label>
+                                    <input type="text" class="form-control hn-form-control" id="id_preferred_job_role" name="preferred_job_role" value="{{ form.preferred_job_role.value|default:'' }}" placeholder="e.g. Registered Nurse">
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-between mt-4 pt-3 border-top">
+                                <button type="button" class="btn btn-light border text-muted px-3" data-prev="2"><i class="bi bi-arrow-left me-1"></i> Back</button>
+                                <button type="submit" class="btn hn-btn-primary px-4" id="btnSaveProfile">
+                                    <span class="spinner-border spinner-border-sm d-none me-1" id="saveSpinner"></span>
+                                    Save Profile &amp; Continue <i class="bi bi-check2-circle ms-1"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+
+            <p class="text-center text-muted small mt-3 mb-0">
+                <i class="bi bi-lock me-1"></i>Your details are private and only shared with employers you apply to.
+            </p>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const card = document.getElementById('onboardingCard');
+    const steps = [document.getElementById('step1'), document.getElementById('step2'), document.getElementById('step3')];
+    const progress = document.getElementById('onboardingProgress');
+    const pill = document.getElementById('stepPill');
+    const labels = ['Step 1 of 3 · About you', 'Step 2 of 3 · Resume', 'Step 3 of 3 · Preferences'];
+    const hasErrors = card && card.getAttribute('data-has-errors') === 'true';
+
+    function showStep(n) {
+        n = Math.min(3, Math.max(1, n));
+        steps.forEach((el, i) => el.classList.toggle('is-active', i === n - 1));
+        if (progress) progress.style.width = (n * 33.33) + '%';
+        if (pill) pill.textContent = labels[n - 1];
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function validateStep(n) {
+        const step = steps[n - 1];
+        if (!step) return true;
+        const fields = step.querySelectorAll('input[required], select[required]');
+        for (const f of fields) {
+            if (!f.checkValidity()) {
+                f.reportValidity();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    document.querySelectorAll('[data-next]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const current = parseInt(btn.closest('.hn-step').id.replace('step', ''), 10);
+            if (validateStep(current)) showStep(parseInt(btn.getAttribute('data-next'), 10));
+        });
+    });
+    document.querySelectorAll('[data-prev]').forEach(btn => {
+        btn.addEventListener('click', () => showStep(parseInt(btn.getAttribute('data-prev'), 10)));
+    });
+
+    // Resume upload feedback
+    const resumeInput = document.getElementById('id_resume');
+    const resumeZone = document.getElementById('resumeZone');
+    const resumeTitle = document.getElementById('resumeZoneTitle');
+    const resumeSub = document.getElementById('resumeZoneSub');
+    if (resumeInput && resumeZone) {
+        resumeInput.addEventListener('change', function () {
+            if (resumeInput.files && resumeInput.files.length) {
+                resumeZone.classList.add('has-file');
+                resumeTitle.textContent = resumeInput.files[0].name;
+                resumeSub.textContent = 'Click to choose a different file';
+            }
+        });
+    }
+
+    // Submit spinner
+    const form = document.getElementById('onboardingForm');
+    if (form) {
+        form.addEventListener('submit', function () {
+            const btn = document.getElementById('btnSaveProfile');
+            const spinner = document.getElementById('saveSpinner');
+            if (btn) btn.disabled = true;
+            if (spinner) spinner.classList.remove('d-none');
+        });
+    }
+
+    // When server-side validation fails, surface all steps so errors are visible.
+    if (hasErrors) {
+        steps.forEach(el => el.classList.add('is-active'));
+        if (progress) progress.style.width = '100%';
+        if (pill) pill.textContent = 'Please review your details';
+    } else {
+        showStep(1);
+    }
+})();
+</script>
+{% endblock %}

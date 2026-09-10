@@ -31,6 +31,7 @@ CANDIDATE_PROTECTED_PREFIXES = (
     '/profile/',
     '/applications/',
     '/saved-jobs/',
+    '/onboarding/',
 )
 
 class HirenestAccessMiddleware:

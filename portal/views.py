@@ -1,7 +1,5 @@
 import json
 import logging
-import secrets
-from datetime import timedelta
 from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
@@ -11,14 +9,12 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q, Count
 from django.utils import timezone
 from django.utils.text import slugify
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
 
-from apps.accounts.models import User, OTPVerification
-from apps.accounts.services.email_service import generate_otp, send_email_otp
+from apps.accounts.models import User
 from apps.jobs.models import Job, JobSkill
 from apps.companies.models import Company, CompanyMember
 from apps.candidates.models import CandidateProfile, CandidateSkill, SavedJob
@@ -40,8 +36,7 @@ from .services import (
     get_candidate_recommended_jobs,
 )
 from .forms import (
-    CandidateRegistrationForm,
-    CandidateLoginForm,
+    CandidateOnboardingForm,
     CandidateProfileForm,
     EmployerRegistrationForm,
     EmployerLoginForm,
@@ -394,301 +389,103 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
 
 
 # ==============================================================================
-# 5. CANDIDATE AUTHENTICATION & POPUP (EMAIL + OTP + GOOGLE + APPLE)
+# 5. CANDIDATE ONBOARDING (HIRENEST AUSTRALIA BRANDED PROFILE FLOW)
 # ==============================================================================
-class CandidateSendOTPView(View):
+class HirenestCandidateOnboardingView(LoginRequiredMixin, View):
     """
-    AJAX Endpoint to send a 6-digit verification code to candidate email.
-    Includes rate-limiting cooldown and secure hashed storage.
-    """
-    def post(self, request):
-        try:
-            data = json.loads(request.body.decode('utf-8'))
-        except Exception:
-            data = request.POST
+    Branded HireNest Australia candidate onboarding.
 
-        email = data.get('email', '').strip().lower()
-        if not email or '@' not in email or '.' not in email.split('@')[-1]:
-            return JsonResponse({'success': False, 'error': 'Please provide a valid email address.'}, status=400)
-
-        # Check rate limiting / cooldown (1 request per 60 seconds)
-        recent_otp = OTPVerification.objects.filter(
-            email=email,
-            created_at__gte=timezone.now() - timedelta(seconds=60)
-        ).first()
-
-        if recent_otp:
-            time_left = 60 - int((timezone.now() - recent_otp.created_at).total_seconds())
-            return JsonResponse({
-                'success': False,
-                'error': f'Please wait {time_left} seconds before requesting a new code.',
-                'cooldown': time_left
-            }, status=429)
-
-        # Generate fresh 6-digit OTP
-        raw_otp = generate_otp()
-        expires_at = timezone.now() + timedelta(minutes=10)
-
-        otp_record = OTPVerification(
-            email=email,
-            expires_at=expires_at,
-        )
-        otp_record.set_otp(raw_otp)
-        otp_record.save()
-
-        # Send email OTP via configured infrastructure
-        success, msg = send_email_otp(email, raw_otp, purpose='candidate_auth')
-
-        return JsonResponse({
-            'success': True,
-            'message': 'A 6-digit verification code has been sent to your email.',
-            'cooldown': 60,
-            'email': email
-        })
-
-
-class CandidateVerifyOTPView(View):
-    """
-    AJAX Endpoint to verify 6-digit OTP and authenticate or create candidate.
-    Links existing accounts seamlessly without creating duplicates.
-    """
-    def post(self, request):
-        try:
-            data = json.loads(request.body.decode('utf-8'))
-        except Exception:
-            data = request.POST
-
-        email = data.get('email', '').strip().lower()
-        otp_code = data.get('otp', '').strip()
-
-        if not email or not otp_code or len(otp_code) != 6:
-            return JsonResponse({'success': False, 'error': 'Please enter the complete 6-digit verification code.'}, status=400)
-
-        # Find latest pending OTP record for this email
-        otp_record = OTPVerification.objects.filter(
-            email=email,
-            verified=False
-        ).order_by('-created_at').first()
-
-        if not otp_record:
-            return JsonResponse({'success': False, 'error': 'No verification code found. Please request a new code.'}, status=400)
-
-        if otp_record.is_expired():
-            return JsonResponse({'success': False, 'error': 'Verification code has expired. Please request a new code.'}, status=400)
-
-        if not otp_record.can_attempt():
-            return JsonResponse({'success': False, 'error': 'Too many failed attempts. Please request a new code.'}, status=400)
-
-        # Increment attempt count
-        otp_record.attempts += 1
-        otp_record.save()
-
-        # Validate OTP hash
-        if not otp_record.check_otp(otp_code):
-            remaining = 5 - otp_record.attempts
-            return JsonResponse({
-                'success': False,
-                'error': f'Incorrect verification code. {remaining} attempt(s) remaining.'
-            }, status=400)
-
-        # OTP is valid -> Mark verified
-        otp_record.verified = True
-        otp_record.save()
-
-        # Find or create candidate user
-        is_new = False
-        user = User.objects.filter(email=email).first()
-
-        if user:
-            # Existing user -> Ensure active & verified
-            user.is_active = True
-            user.is_verified = True
-            if user.role != User.Role.CANDIDATE and user.role != User.Role.SUPER_ADMIN:
-                user.role = User.Role.CANDIDATE
-            user.save()
-        else:
-            # New candidate user
-            is_new = True
-            first_name = email.split('@')[0].replace('.', ' ').replace('_', ' ').title()
-            user = User.objects.create_user(
-                email=email,
-                first_name=first_name,
-                role=User.Role.CANDIDATE,
-                is_active=True,
-                is_verified=True
-            )
-
-        # Ensure CandidateProfile exists in DB
-        profile, profile_created = CandidateProfile.objects.get_or_create(
-            user=user,
-            defaults={
-                'full_name': user.get_full_name() or user.email.split('@')[0].title(),
-                'location': 'Sydney NSW',
-                'candidate_status': 'ACTIVE'
-            }
-        )
-
-        # Check if onboarding wizard is needed (if new or preferences not set)
-        onboarding_required = is_new or profile_created or not profile.preferred_location or not profile.department
-
-        # Log candidate into Django session
-        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-
-        return JsonResponse({
-            'success': True,
-            'is_new': is_new,
-            'onboarding_required': onboarding_required,
-            'user': {
-                'id': str(user.id),
-                'email': user.email,
-                'name': user.get_full_name() or user.email,
-            },
-            'redirect_url': '/profile/' if not onboarding_required else '/dashboard/'
-        })
-
-
-class CandidateSocialAuthView(View):
-    """
-    Endpoint for Google & Apple OAuth registration / sign-in for candidates.
-    Connects to existing candidate profile system without duplicate entries.
-    """
-    def post(self, request):
-        try:
-            data = json.loads(request.body.decode('utf-8'))
-        except Exception:
-            data = request.POST
-
-        provider = data.get('provider', 'google').lower()
-        email = data.get('email', '').strip().lower()
-        full_name = data.get('name', '').strip()
-        first_name = data.get('first_name', '').strip()
-        last_name = data.get('last_name', '').strip()
-        profile_picture = data.get('picture', '').strip()
-
-        if not email:
-            return JsonResponse({'success': False, 'error': f'Email is required for {provider.title()} authentication.'}, status=400)
-
-        # Find or create user
-        is_new = False
-        user = User.objects.filter(email=email).first()
-
-        if not user:
-            is_new = True
-            if not first_name and full_name:
-                parts = full_name.split(' ', 1)
-                first_name = parts[0]
-                last_name = parts[1] if len(parts) > 1 else ''
-
-            user = User.objects.create_user(
-                email=email,
-                first_name=first_name or email.split('@')[0].title(),
-                last_name=last_name,
-                role=User.Role.CANDIDATE,
-                is_active=True,
-                is_verified=True,
-                profile_picture=profile_picture if profile_picture else None
-            )
-        else:
-            if profile_picture and not user.profile_picture:
-                user.profile_picture = profile_picture
-                user.save()
-
-        profile, profile_created = CandidateProfile.objects.get_or_create(
-            user=user,
-            defaults={
-                'full_name': full_name or user.get_full_name() or email.split('@')[0].title(),
-                'location': 'Sydney NSW',
-                'candidate_status': 'ACTIVE'
-            }
-        )
-
-        onboarding_required = is_new or profile_created or not profile.preferred_location
-
-        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-
-        return JsonResponse({
-            'success': True,
-            'is_new': is_new,
-            'onboarding_required': onboarding_required,
-            'user': {
-                'id': str(user.id),
-                'email': user.email,
-                'name': user.get_full_name() or user.email,
-            },
-            'redirect_url': '/dashboard/' if onboarding_required else '/jobs/'
-        })
-
-
-# ==============================================================================
-# 6. ONBOARDING 3-QUESTION WIZARD & LOCATION LOOKUP APIS
-# ==============================================================================
-class CandidateOnboardingView(LoginRequiredMixin, View):
-    """
-    Saves the 3-question onboarding preferences:
-    1. Work category / classification (Question 1)
-    2. Preferred Australian locations / Remote (Question 2)
-    3. Job / Employment type (Question 3)
+    Collects the candidate's core profile details and work preferences after a
+    successful "Continue with Google" sign-in. Candidates whose profile is
+    already complete are sent straight to their dashboard.
     """
     login_url = '/login/'
 
-    def post(self, request):
-        try:
-            data = json.loads(request.body.decode('utf-8'))
-        except Exception:
-            data = request.POST
-
-        categories = data.get('categories', [])
-        locations = data.get('locations', [])
-        job_types = data.get('job_types', [])
-        role_title = data.get('role_title', '').strip()
-
-        profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
-
-        # Save Question 1 (Work Category)
-        if isinstance(categories, list) and categories:
-            profile.department = categories[0]
-        elif isinstance(categories, str) and categories:
-            profile.department = categories
-
-        if role_title:
-            profile.preferred_job_role = role_title
-
-        # Save Question 2 (Australian Locations / Remote)
-        if isinstance(locations, list) and locations:
-            profile.preferred_location = ', '.join(locations)
-            # Normalize candidate primary location if not set
-            if not profile.location or profile.location == 'Sydney NSW':
-                first_loc = locations[0]
-                profile.location = normalize_australian_location(first_loc)
-        elif isinstance(locations, str) and locations:
-            profile.preferred_location = locations
-            profile.location = normalize_australian_location(locations)
-
-        # Save Question 3 (Job / Employment Type)
-        if isinstance(job_types, list) and job_types:
-            profile.employment_type = job_types[0]
-        elif isinstance(job_types, str) and job_types:
-            profile.employment_type = job_types
-
-        # Store complete onboarding answers in parsed_json for rich AI matching
-        if not isinstance(profile.parsed_json, dict):
-            profile.parsed_json = {}
-
-        profile.parsed_json['onboarding_answers'] = {
-            'categories': categories,
-            'locations': locations,
-            'job_types': job_types,
-            'role_title': role_title,
-            'completed_at': timezone.now().isoformat(),
+    def _form_context(self, request, profile, form):
+        return {
+            'form': form,
+            'profile': profile,
+            'locations': POPULAR_AU_LOCATIONS,
+            'all_locations': ALL_AUSTRALIAN_LOCATIONS,
+            'classifications': AUSTRALIAN_CLASSIFICATIONS,
+            'employment_types': AU_EMPLOYMENT_TYPES,
         }
 
-        profile.save()
+    def get(self, request):
+        profile, _ = CandidateProfile.objects.get_or_create(
+            user=request.user,
+            defaults={'full_name': request.user.get_full_name() or request.user.email}
+        )
+        if profile.is_onboarding_complete and request.GET.get('edit') != '1':
+            return redirect('/dashboard/')
 
-        return JsonResponse({
-            'success': True,
-            'message': 'Your job preferences have been saved successfully!',
-            'redirect_url': '/dashboard/'
+        form = CandidateOnboardingForm(initial={
+            'first_name': request.user.first_name,
+            'last_name': request.user.last_name,
+            'phone_number': request.user.phone_number or '',
+            'location': profile.location or '',
+            'citizenship': profile.citizenship,
+            'preferred_job_category': profile.department or '',
+            'work_type': profile.employment_type or '',
+            'preferred_job_role': profile.preferred_job_role or '',
         })
+        return render(request, 'hirenest/candidate_onboarding.html', self._form_context(request, profile, form))
+
+    def post(self, request):
+        profile, _ = CandidateProfile.objects.get_or_create(
+            user=request.user,
+            defaults={'full_name': request.user.get_full_name() or request.user.email}
+        )
+        form = CandidateOnboardingForm(request.POST, request.FILES)
+        if form.is_valid():
+            cd = form.cleaned_data
+            first_name = cd['first_name'].strip()
+            last_name = cd['last_name'].strip()
+            phone_number = cd['phone_number'].strip()
+            location = normalize_australian_location(cd['location'].strip()) or 'Sydney NSW'
+            citizenship = cd['citizenship']
+            category = cd['preferred_job_category']
+            work_type = cd['work_type']
+            role_title = (cd.get('preferred_job_role') or '').strip()
+
+            request.user.first_name = first_name
+            request.user.last_name = last_name
+            request.user.phone_number = phone_number
+            request.user.save(update_fields=['first_name', 'last_name', 'phone_number'])
+
+            profile.full_name = f"{first_name} {last_name}".strip()
+            profile.location = location
+            profile.department = category
+            profile.employment_type = work_type
+            profile.preferred_location = location
+            profile.work_permit_countries = [citizenship] if citizenship else []
+            if role_title:
+                profile.preferred_job_role = role_title
+            if cd.get('resume'):
+                profile.resume = cd['resume']
+
+            if not isinstance(profile.parsed_json, dict):
+                profile.parsed_json = {}
+            profile.parsed_json['onboarding_answers'] = {
+                'citizenship': citizenship,
+                'preferred_job_category': category,
+                'work_type': work_type,
+                'role_title': role_title,
+                'location': location,
+                'completed_at': timezone.now().isoformat(),
+            }
+            profile.save()
+
+            messages.success(request, "Your HireNest Australia profile is complete. Start exploring jobs matched to you!")
+            return redirect('/dashboard/')
+
+        messages.error(request, "Please review the highlighted fields and try again.")
+        return render(request, 'hirenest/candidate_onboarding.html', self._form_context(request, profile, form))
+
+
+# ==============================================================================
+# 6. AUSTRALIAN LOCATION LOOKUP API
+# ==============================================================================
 
 
 class AustralianLocationsLookupView(View):
@@ -752,65 +549,33 @@ class HirenestCandidateDashboardView(LoginRequiredMixin, View):
 
 
 # ==============================================================================
-# 8. LEGACY AUTHENTICATION, REGISTRATION & PROFILE (FORM BASED)
+# 8. CANDIDATE AUTHENTICATION PAGES (CONTINUE WITH GOOGLE)
 # ==============================================================================
 class HirenestCandidateRegisterView(View):
-    """Candidate registration page (form fallback)."""
+    """
+    Candidate registration landing page.
+
+    Registration happens exclusively through "Continue with Google" OAuth. A new
+    candidate account is created automatically and the candidate is taken into
+    the branded onboarding flow. Email/password and OTP registration are removed.
+    """
     def get(self, request):
         if request.user.is_authenticated:
             return redirect('/dashboard/')
-        return render(request, 'hirenest/candidate_register.html', {'locations': POPULAR_AU_LOCATIONS})
+        return render(request, 'hirenest/candidate_register.html', {
+            'locations': POPULAR_AU_LOCATIONS,
+            'next': request.GET.get('next', ''),
+        })
 
     def post(self, request):
-        form = CandidateRegistrationForm(request.POST)
-        if form.is_valid():
-            email = form.cleaned_data['email']
-            password = form.cleaned_data['password']
-            first_name = form.cleaned_data['first_name']
-            last_name = form.cleaned_data['last_name']
-            phone_number = form.cleaned_data['phone_number']
-            location = form.cleaned_data['location']
-
-            user = User.objects.create_user(
-                email=email,
-                password=password,
-                first_name=first_name,
-                last_name=last_name,
-                phone_number=phone_number,
-                role=User.Role.CANDIDATE,
-                is_active=True,
-                is_verified=True,
-            )
-
-            CandidateProfile.objects.create(
-                user=user,
-                full_name=f"{first_name} {last_name}".strip(),
-                location=location,
-                candidate_status='ACTIVE'
-            )
-
-            auth_user = authenticate(request, username=email, password=password)
-            if auth_user:
-                login(request, auth_user, backend='django.contrib.auth.backends.ModelBackend')
-                messages.success(request, f"Welcome to HireNest Australia, {first_name}!")
-                return redirect('/dashboard/')
-
-            return redirect('/login/')
-
-        errors = [err for err_list in form.errors.values() for err in err_list]
-        return render(request, 'hirenest/candidate_register.html', {
-            'errors': errors,
-            'locations': POPULAR_AU_LOCATIONS,
-            'first_name': request.POST.get('first_name', ''),
-            'last_name': request.POST.get('last_name', ''),
-            'email': request.POST.get('email', ''),
-            'phone_number': request.POST.get('phone_number', ''),
-            'location': request.POST.get('location', ''),
-        })
+        # No email/password or OTP registration. Always start Google OAuth.
+        return redirect('/accounts/google/login/')
 
 
 class HirenestCandidateLoginView(View):
-    """Candidate login page (form fallback)."""
+    """
+    Candidate login page. Sign-in happens exclusively through Google OAuth.
+    """
     def get(self, request):
         if request.user.is_authenticated:
             return redirect('/dashboard/')
@@ -818,40 +583,7 @@ class HirenestCandidateLoginView(View):
         return render(request, 'hirenest/candidate_login.html', {'next': next_url})
 
     def post(self, request):
-        form = CandidateLoginForm(request.POST)
-        next_url = request.POST.get('next', '').strip() or '/dashboard/'
-
-        if form.is_valid():
-            email = form.cleaned_data['email']
-            password = form.cleaned_data['password']
-            remember_me = form.cleaned_data.get('remember_me', True)
-
-            user = authenticate(request, username=email, password=password)
-            if user is not None and user.is_active:
-                if user.role != User.Role.CANDIDATE:
-                    return render(request, 'hirenest/candidate_login.html', {
-                        'error': 'This account is registered as an Employer. Please sign in via the Employer Portal.',
-                        'email': email,
-                        'next': next_url,
-                    })
-
-                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-                if not remember_me:
-                    request.session.set_expiry(0)
-
-                messages.success(request, f"Welcome back, {user.first_name or user.email}!")
-                return redirect(next_url)
-
-            return render(request, 'hirenest/candidate_login.html', {
-                'error': 'Invalid email or password. Please verify your credentials.',
-                'email': email,
-                'next': next_url,
-            })
-
-        return render(request, 'hirenest/candidate_login.html', {
-            'error': 'Please provide a valid email and password.',
-            'next': next_url,
-        })
+        return redirect('/accounts/google/login/')
 
 
 class HirenestCandidateLogoutView(View):
@@ -935,10 +667,65 @@ class HirenestCandidateProfileView(LoginRequiredMixin, View):
         if skills_text:
             profile.skills.all().delete()
             for s in [x.strip() for x in skills_text.split(',') if x.strip()]:
-                CandidateSkill.objects.create(candidate=profile, skill_name=s)
+                CandidateSkill.objects.create(profile=profile, skill_name=s)
 
         messages.success(request, "Your profile has been updated successfully.")
         return redirect('/profile/')
+
+
+class HirenestCandidateDeleteAccountView(LoginRequiredMixin, View):
+    """
+    Confirmation + secure deletion of the authenticated candidate's own account.
+
+    Only the logged-in candidate can act on their own account (there is no user
+    identifier in the URL), so candidates can never delete or modify another
+    user's account. Deletion cascades through the existing CandidateProfile
+    relationships (skills, experience, education, projects, certifications,
+    saved jobs, applications, tags, notifications).
+    """
+    login_url = '/login/'
+
+    def _block_non_candidate(self, request):
+        if request.user.role != User.Role.CANDIDATE:
+            messages.error(request, "Only candidate accounts can be deleted from this page.")
+            return redirect('/')
+        return None
+
+    def get(self, request):
+        blocked = self._block_non_candidate(request)
+        if blocked:
+            return blocked
+        profile = getattr(request.user, 'candidate_profile', None)
+        return render(request, 'hirenest/candidate_delete_account.html', {'profile': profile})
+
+    def post(self, request):
+        blocked = self._block_non_candidate(request)
+        if blocked:
+            return blocked
+
+        if request.POST.get('confirm_delete') != 'yes':
+            messages.error(request, "Please confirm the deletion before continuing.")
+            return redirect('/profile/delete/')
+
+        user = request.user
+        profile = getattr(user, 'candidate_profile', None)
+
+        # Best-effort removal of uploaded files before the DB rows are deleted.
+        if profile is not None:
+            for field_name in ('resume', 'original_file', 'generated_resume', 'profile_photo'):
+                file_field = getattr(profile, field_name, None)
+                if file_field and getattr(file_field, 'name', ''):
+                    try:
+                        file_field.storage.delete(file_field.name)
+                    except Exception:
+                        logger.warning("Could not delete %s for candidate %s", field_name, user.pk)
+
+        with transaction.atomic():
+            user.delete()
+
+        logout(request)
+        messages.success(request, "Your HireNest Australia candidate account has been permanently deleted.")
+        return redirect('/')
 
 
 class HirenestCandidateApplicationsView(LoginRequiredMixin, View):

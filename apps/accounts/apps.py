@@ -121,10 +121,19 @@ def setup_google_social_app(sender, **kwargs):
             from django.conf import settings
 
             site_id = getattr(settings, 'SITE_ID', 1)
-            site, _ = Site.objects.get_or_create(
+            site_domain = getattr(settings, 'SITE_DOMAIN', 'hirenest.com.au')
+            site_name = getattr(settings, 'SITE_NAME', 'HireNest Australia')
+
+            site, site_created = Site.objects.get_or_create(
                 id=site_id,
-                defaults={'domain': 'talent-vault.in', 'name': 'TalentVault'}
+                defaults={'domain': site_domain, 'name': site_name}
             )
+            # Replace legacy hard-coded domains so the site reflects the current
+            # environment (local 127.0.0.1:8002 or production hirenest.com.au).
+            if not site_created and site.domain in ('talent-vault.in', 'example.com') and site.domain != site_domain:
+                site.domain = site_domain
+                site.name = site_name
+                site.save(update_fields=['domain', 'name'])
 
             client_id = os.environ.get('GOOGLE_CLIENT_ID', '') or getattr(settings, 'GOOGLE_CLIENT_ID', '')
             if client_id.startswith("GOOGLE_CLIENT_ID="):

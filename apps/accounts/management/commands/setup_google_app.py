@@ -13,10 +13,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         site_id = getattr(settings, "SITE_ID", 1)
+        site_domain = getattr(settings, "SITE_DOMAIN", "hirenest.com.au")
+        site_name = getattr(settings, "SITE_NAME", "HireNest Australia")
         site, created_site = Site.objects.get_or_create(
             id=site_id,
-            defaults={"domain": "talent-vault.in", "name": "TalentVault"},
+            defaults={"domain": site_domain, "name": site_name},
         )
+        if not created_site and site.domain in ("talent-vault.in", "example.com") and site.domain != site_domain:
+            site.domain = site_domain
+            site.name = site_name
+            site.save(update_fields=["domain", "name"])
         if created_site:
             self.stdout.write(
                 self.style.SUCCESS(

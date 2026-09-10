@@ -1,38 +1,60 @@
 from django import forms
 from django.contrib.auth import authenticate
+from django.core.validators import FileExtensionValidator
 from apps.accounts.models import User
 from apps.candidates.models import CandidateProfile
 from apps.companies.models import Company
+from .services import AUSTRALIAN_CLASSIFICATIONS
 
-class CandidateRegistrationForm(forms.Form):
+CITIZENSHIP_CHOICES = [
+    ('Australian Citizen', 'Australian Citizen'),
+    ('Australian Permanent Resident', 'Australian Permanent Resident'),
+    ('New Zealand Citizen', 'New Zealand Citizen'),
+    ('Temporary Work Visa (Subclass 482)', 'Temporary Work Visa (Subclass 482)'),
+    ('Student Visa (Subclass 500)', 'Student Visa (Subclass 500)'),
+    ('Working Holiday Visa (Subclass 417/462)', 'Working Holiday Visa (Subclass 417/462)'),
+    ('Other / Requires Sponsorship', 'Other / Requires Sponsorship'),
+]
+
+RESUME_EXTENSIONS = ['pdf', 'doc', 'docx']
+
+
+class CandidateOnboardingForm(forms.Form):
+    """
+    HireNest Australia candidate onboarding form.
+
+    Reuses the existing CandidateProfile fields (department, employment_type,
+    work_permit_countries, resume) so no unnecessary schema changes are needed.
+    """
     first_name = forms.CharField(max_length=50, required=True, label="First Name")
     last_name = forms.CharField(max_length=50, required=True, label="Last Name")
-    email = forms.EmailField(required=True, label="Email Address")
-    phone_number = forms.CharField(max_length=30, required=True, label="Australian Phone Number")
+    phone_number = forms.CharField(max_length=30, required=True, label="Phone Number")
     location = forms.CharField(max_length=100, required=True, label="Australian Location")
-    password = forms.CharField(widget=forms.PasswordInput, min_length=8, required=True)
-    confirm_password = forms.CharField(widget=forms.PasswordInput, min_length=8, required=True)
-    terms = forms.BooleanField(required=True)
+    citizenship = forms.ChoiceField(choices=CITIZENSHIP_CHOICES, required=True, label="Citizenship / Work Rights")
+    resume = forms.FileField(
+        required=False,
+        label="Resume",
+        validators=[FileExtensionValidator(allowed_extensions=RESUME_EXTENSIONS)],
+        help_text="Upload your resume (PDF, DOC or DOCX).",
+    )
+    preferred_job_category = forms.ChoiceField(required=True, label="Preferred Job Category")
+    work_type = forms.ChoiceField(required=True, label="Work Type")
+    preferred_job_role = forms.CharField(max_length=255, required=False, label="Preferred Job Title")
 
-    def clean_email(self):
-        email = self.cleaned_data.get('email', '').strip().lower()
-        if User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("An account with this email address already exists. Please log in.")
-        return email
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['preferred_job_category'].choices = [
+            (cat['name'], cat['name']) for cat in AUSTRALIAN_CLASSIFICATIONS
+        ]
+        self.fields['work_type'].choices = list(
+            CandidateProfile._meta.get_field('employment_type').choices
+        )
 
-    def clean(self):
-        cleaned_data = super().clean()
-        password = cleaned_data.get('password')
-        confirm_password = cleaned_data.get('confirm_password')
-        if password and confirm_password and password != confirm_password:
-            self.add_error('confirm_password', "Passwords do not match. Please try again.")
-        return cleaned_data
-
-
-class CandidateLoginForm(forms.Form):
-    email = forms.EmailField(required=True, label="Email Address")
-    password = forms.CharField(widget=forms.PasswordInput, required=True, label="Password")
-    remember_me = forms.BooleanField(required=False, initial=True)
+    def clean_resume(self):
+        resume = self.cleaned_data.get('resume')
+        if resume and resume.size > 10 * 1024 * 1024:
+            raise forms.ValidationError("Resume file must be 10 MB or smaller.")
+        return resume
 
 
 class CandidateProfileForm(forms.ModelForm):

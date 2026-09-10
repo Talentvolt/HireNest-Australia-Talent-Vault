@@ -47,8 +47,8 @@ def send_email_otp(email: str, otp: str, purpose: str = "signup") -> Tuple[bool,
     target_email = email.strip().lower()
     masked_target = mask_email(target_email)
 
-    subject = "Your TalentVault Verification Code"
-    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'noreply@talent-vault.in'
+    subject = "Your HireNest Australia Verification Code"
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', '') or 'HireNest Australia <noreply@hirenest.com.au>'
     context = {'otp': otp, 'purpose': purpose, 'email': target_email}
 
     # Render HTML and Plain-Text templates

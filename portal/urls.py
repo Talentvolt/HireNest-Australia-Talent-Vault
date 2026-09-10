@@ -8,13 +8,11 @@ from .views import (
     HirenestCandidateLoginView,
     HirenestCandidateLogoutView,
     HirenestCandidateProfileView,
+    HirenestCandidateDeleteAccountView,
     HirenestCandidateApplicationsView,
     HirenestCandidateSavedJobsView,
     HirenestToggleSaveJobView,
-    CandidateSendOTPView,
-    CandidateVerifyOTPView,
-    CandidateSocialAuthView,
-    CandidateOnboardingView,
+    HirenestCandidateOnboardingView,
     AustralianLocationsLookupView,
     HirenestCandidateDashboardView,
     HirenestEmployerLandingView,
@@ -37,11 +35,8 @@ urlpatterns = [
     path('jobs/<uuid:pk>/apply/', HirenestJobApplyView.as_view(), name='job_apply'),
     path('jobs/saved/toggle/', HirenestToggleSaveJobView.as_view(), name='toggle_saved_job'),
 
-    # Candidate AJAX Authentication & OTP Endpoints
-    path('auth/send-otp/', CandidateSendOTPView.as_view(), name='candidate_send_otp'),
-    path('auth/verify-otp/', CandidateVerifyOTPView.as_view(), name='candidate_verify_otp'),
-    path('auth/social/', CandidateSocialAuthView.as_view(), name='candidate_social_auth'),
-    path('api/onboarding/', CandidateOnboardingView.as_view(), name='candidate_onboarding'),
+    # Candidate Onboarding & Location Lookup
+    path('onboarding/', HirenestCandidateOnboardingView.as_view(), name='candidate_onboarding'),
     path('api/locations/', AustralianLocationsLookupView.as_view(), name='locations_lookup'),
 
     # Candidate Dashboard & Management
@@ -50,6 +45,7 @@ urlpatterns = [
     path('login/', HirenestCandidateLoginView.as_view(), name='candidate_login'),
     path('logout/', HirenestCandidateLogoutView.as_view(), name='candidate_logout'),
     path('profile/', HirenestCandidateProfileView.as_view(), name='candidate_profile'),
+    path('profile/delete/', HirenestCandidateDeleteAccountView.as_view(), name='candidate_delete_account'),
     path('applications/', HirenestCandidateApplicationsView.as_view(), name='candidate_applications'),
     path('saved-jobs/', HirenestCandidateSavedJobsView.as_view(), name='candidate_saved_jobs'),
 

@@ -35,7 +35,7 @@ class CandidateProfile(BaseAppModel):
     summary = models.TextField(blank=True)
     resume = models.FileField(
         upload_to='resumes/', 
-        validators=[FileExtensionValidator(allowed_extensions=['pdf'])],
+        validators=[FileExtensionValidator(allowed_extensions=['pdf', 'doc', 'docx'])],
         null=True, 
         blank=True
     )
@@ -129,6 +129,50 @@ class CandidateProfile(BaseAppModel):
         if self.full_name and self.location:
             score += 10
         return min(100, score)
+
+    @property
+    def citizenship(self) -> str:
+        """
+        Primary Australian working-rights / citizenship status.
+        Reuses the existing work_permit_countries JSON field (no schema change).
+        """
+        countries = self.work_permit_countries or []
+        if isinstance(countries, list) and countries:
+            return str(countries[0])
+        if isinstance(countries, str) and countries:
+            return countries
+        return ""
+
+    @property
+    def is_onboarding_complete(self) -> bool:
+        """
+        Determines whether the candidate has completed the HireNest Australia
+        onboarding profile.
+
+        An explicit completion marker is stored in parsed_json when the
+        onboarding form is submitted, so onboarding is never shown again.
+        Existing TalentVault candidate profiles that already hold their core
+        preferences are also treated as complete.
+        """
+        answers = self.parsed_json if isinstance(self.parsed_json, dict) else {}
+        onboarding = answers.get('onboarding_answers') if isinstance(answers, dict) else None
+        if isinstance(onboarding, dict) and onboarding.get('completed_at'):
+            return True
+
+        phone = ""
+        if self.user_id:
+            try:
+                phone = (self.user.phone_number or "").strip()
+            except Exception:
+                phone = ""
+        return bool(
+            self.full_name
+            and self.location
+            and self.department
+            and self.preferred_location
+            and self.employment_type
+            and phone
+        )
 
     @property
     def is_verified(self) -> bool:
