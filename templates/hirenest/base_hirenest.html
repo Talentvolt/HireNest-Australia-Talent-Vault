@@ -42,42 +42,40 @@
 <body class="hirenest-body" data-user-authenticated="{% if request.user.is_authenticated %}true{% else %}false{% endif %}" data-user-role="{{ request.user.role|default:'GUEST' }}">
 
     <!-- HireNest Australia Header -->
-    <header class="hn-navbar py-1.5">
+    <header class="hn-navbar">
         <div class="container-xl">
-            <div class="d-flex align-items-center justify-content-between">
-                
-                <!-- Brand Logo -->
-                <div class="d-flex align-items-center gap-4">
-                    <a href="/" class="hn-logo-wrap text-decoration-none">
-                        <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-navbar-logo">
-                    </a>
+            <div class="hn-navbar-inner">
 
-                    <!-- Desktop Primary Navigation -->
-                    <nav class="d-none d-lg-flex align-items-center gap-1">
-                        <a href="/jobs/" class="hn-nav-link {% if request.path == '/jobs/' or '/jobs/' in request.path and '/employers' not in request.path %}active{% endif %}">Find Jobs</a>
-                        <a href="/companies/" class="hn-nav-link {% if '/companies' in request.path %}active{% endif %}">Companies</a>
-                        <a href="/career-advice/" class="hn-nav-link {% if '/career-advice' in request.path %}active{% endif %}">Career Advice</a>
-                        <a href="/salary-guide/" class="hn-nav-link {% if '/salary-guide' in request.path %}active{% endif %}">Salary Guide</a>
-                        <a href="/resources/" class="hn-nav-link {% if '/resources' in request.path %}active{% endif %}">Resources</a>
-                    </nav>
-                </div>
+                <!-- Brand Logo -->
+                <a href="/" class="hn-logo-wrap" aria-label="HireNest Australia home">
+                    <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-navbar-logo">
+                </a>
+
+                <!-- Desktop Primary Navigation -->
+                <nav class="hn-nav-links" aria-label="Primary navigation">
+                    <a href="/jobs/" class="hn-nav-link {% if request.path == '/jobs/' or '/jobs/' in request.path and '/employers' not in request.path %}active{% endif %}">Find Jobs</a>
+                    <a href="/companies/" class="hn-nav-link {% if '/companies' in request.path %}active{% endif %}">Companies</a>
+                    <a href="/career-advice/" class="hn-nav-link {% if '/career-advice' in request.path %}active{% endif %}">Career Advice</a>
+                    <a href="/salary-guide/" class="hn-nav-link {% if '/salary-guide' in request.path %}active{% endif %}">Salary Guide</a>
+                    <a href="/resources/" class="hn-nav-link {% if '/resources' in request.path %}active{% endif %}">Resources</a>
+                </nav>
 
                 <!-- Right Actions / User Navigation -->
-                <div class="d-flex align-items-center gap-2.5">
+                <div class="hn-nav-actions">
 
-                    <!-- For Employers Link / Button -->
-                    <a href="/employers/" class="hn-btn-employer d-none d-md-inline-flex align-items-center gap-1.5 text-decoration-none">
-                        <i class="bi bi-building"></i>
+                    <!-- For Employers -->
+                    <a href="/employers/" class="hn-btn-employer">
+                        <i class="bi bi-building" aria-hidden="true"></i>
                         <span>For Employers</span>
                     </a>
 
-                    <!-- Public Auth Trigger Buttons (Opens Centered Auth Modal) -->
-                    <button type="button" class="hn-btn-outline cursor-pointer" onclick="openCandidateAuthModal('login')">Log In</button>
-                    <button type="button" class="hn-btn-primary cursor-pointer" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
+                    <!-- Public Auth Trigger Buttons (opens centered auth modal) -->
+                    <button type="button" class="hn-btn-outline" onclick="openCandidateAuthModal('login')">Log In</button>
+                    <button type="button" class="hn-btn-primary" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
 
                     <!-- Mobile Menu Toggler -->
-                    <button class="btn btn-light d-lg-none p-2 border" type="button" data-bs-toggle="offcanvas" data-bs-target="#hnMobileMenu" aria-controls="hnMobileMenu" aria-label="Toggle navigation">
-                        <i class="bi bi-list fs-5"></i>
+                    <button class="hn-mobile-toggle" type="button" data-bs-toggle="offcanvas" data-bs-target="#hnMobileMenu" aria-controls="hnMobileMenu" aria-expanded="false" aria-label="Open navigation menu">
+                        <i class="bi bi-list" aria-hidden="true"></i>
                     </button>
                 </div>
 
@@ -85,28 +83,30 @@
         </div>
     </header>
 
-    <!-- Mobile Navigation Offcanvas -->
-    <div class="offcanvas offcanvas-end" tabindex="-1" id="hnMobileMenu" aria-labelledby="hnMobileMenuLabel">
-        <div class="offcanvas-header border-bottom">
-            <a href="/" class="text-decoration-none">
-                <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" style="height: 34px; width: auto; object-fit: contain;">
+    <!-- Mobile Navigation Drawer -->
+    <div class="offcanvas offcanvas-end hn-mobile-menu" tabindex="-1" id="hnMobileMenu" aria-labelledby="hnMobileMenuLabel">
+        <div class="offcanvas-header hn-mobile-header">
+            <a href="/" class="text-decoration-none" aria-label="HireNest Australia home">
+                <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-mobile-logo">
             </a>
-            <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            <button type="button" class="hn-mobile-close" data-bs-dismiss="offcanvas" aria-label="Close navigation menu">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
         </div>
-        <div class="offcanvas-body d-flex flex-column justify-content-between">
-            <div class="list-group list-group-flush mb-4">
-                <a href="/jobs/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-search me-2 text-primary"></i>Find Jobs</a>
-                <a href="/companies/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-buildings me-2 text-primary"></i>Companies</a>
-                <a href="/career-advice/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-journal-text me-2 text-primary"></i>Career Advice</a>
-                <a href="/salary-guide/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-currency-dollar me-2 text-primary"></i>Salary Guide (AUD)</a>
-                <a href="/resources/" class="list-group-item list-group-item-action py-3 fw-semibold"><i class="bi bi-folder2-open me-2 text-primary"></i>Resources & Templates</a>
-                <a href="/employers/" class="list-group-item list-group-item-action py-3 fw-semibold bg-light"><i class="bi bi-building-gear me-2 text-dark"></i>Hire Talent (Employers)</a>
-            </div>
+        <div class="offcanvas-body hn-mobile-body">
+            <nav class="hn-mobile-nav" aria-label="Mobile navigation">
+                <a href="/jobs/" class="hn-mobile-link {% if request.path == '/jobs/' %}active{% endif %}"><i class="bi bi-search" aria-hidden="true"></i><span>Find Jobs</span></a>
+                <a href="/companies/" class="hn-mobile-link {% if '/companies' in request.path %}active{% endif %}"><i class="bi bi-buildings" aria-hidden="true"></i><span>Companies</span></a>
+                <a href="/career-advice/" class="hn-mobile-link {% if '/career-advice' in request.path %}active{% endif %}"><i class="bi bi-journal-text" aria-hidden="true"></i><span>Career Advice</span></a>
+                <a href="/salary-guide/" class="hn-mobile-link {% if '/salary-guide' in request.path %}active{% endif %}"><i class="bi bi-currency-dollar" aria-hidden="true"></i><span>Salary Guide</span></a>
+                <a href="/resources/" class="hn-mobile-link {% if '/resources' in request.path %}active{% endif %}"><i class="bi bi-folder2-open" aria-hidden="true"></i><span>Resources</span></a>
+                <a href="/employers/" class="hn-mobile-link hn-mobile-link-employer {% if '/employers' in request.path %}active{% endif %}"><i class="bi bi-building-gear" aria-hidden="true"></i><span>For Employers</span></a>
+            </nav>
 
-            <div class="border-top pt-3">
-                <button type="button" class="btn btn-outline-primary w-100 mb-2" onclick="openCandidateAuthModal('login')">Candidate Log In</button>
-                <button type="button" class="btn hn-btn-primary w-100 mb-2" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
-                <a href="/employers/login/" class="btn btn-light border w-100">Employer Log In</a>
+            <div class="hn-mobile-actions">
+                <button type="button" class="hn-btn-primary" data-auth-modal="register">Sign In / Register</button>
+                <button type="button" class="hn-btn-outline" data-auth-modal="login">Log In</button>
+                <a href="/employers/login/" class="hn-mobile-employer-link">Employer Log In <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
             </div>
         </div>
     </div>

@@ -101,4 +101,30 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     });
+
+    // --------------------------------------------------------------------------
+    // 3. Mobile drawer: close it first, then open the auth modal
+    // --------------------------------------------------------------------------
+    const mobileMenuEl = document.getElementById('hnMobileMenu');
+    document.querySelectorAll('#hnMobileMenu [data-auth-modal]').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const mode = this.getAttribute('data-auth-modal') || 'options';
+
+            if (!mobileMenuEl || !window.bootstrap) {
+                openCandidateAuthModal(mode);
+                return;
+            }
+
+            const instance = bootstrap.Offcanvas.getInstance(mobileMenuEl);
+            if (!instance) {
+                openCandidateAuthModal(mode);
+                return;
+            }
+
+            mobileMenuEl.addEventListener('hidden.bs.offcanvas', function () {
+                openCandidateAuthModal(mode);
+            }, { once: true });
+            instance.hide();
+        });
+    });
 });
