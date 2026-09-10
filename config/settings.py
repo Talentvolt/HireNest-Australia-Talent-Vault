@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import dj_database_url
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -225,36 +226,54 @@ WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 # ==============================================================================
-# Database Configuration — Connects to PostgreSQL on Render / TalentVault DB
+# Database Configuration — HireNest Australia uses its OWN database ONLY.
+#
+# HireNest and TalentVault are data-isolated and MUST NOT share a database.
+# HireNest reads ONLY HIRENEST_DATABASE_URL (or the HIRENEST_DB_* variables).
+# It deliberately does NOT read TalentVault's DATABASE_URL or DB_* variables,
+# and it does NOT fall back to them.
 # ==============================================================================
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'talentvault_db'),
-        'USER': os.environ.get('DB_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'password'),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
+        'NAME': os.environ.get('HIRENEST_DB_NAME', 'hirenest_australia'),
+        'USER': os.environ.get('HIRENEST_DB_USER', 'postgres'),
+        'PASSWORD': os.environ.get('HIRENEST_DB_PASSWORD', ''),
+        'HOST': os.environ.get('HIRENEST_DB_HOST', 'localhost'),
+        'PORT': os.environ.get('HIRENEST_DB_PORT', '5432'),
     }
 }
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL:
-    DATABASES['default'] = dj_database_url.config(
-        default=DATABASE_URL,
-        conn_max_age=600,
-        conn_health_checks=True,
-    )
+HIRENEST_DATABASE_URL = os.environ.get('HIRENEST_DATABASE_URL')
 
-# Use SQLite when running tests, or if explicitly requested via USE_SQLITE
-if 'test' in sys.argv or 'pytest' in sys.modules or os.environ.get('USE_SQLITE') == '1' or not os.environ.get('DATABASE_URL'):
-    sqlite_path = TALENTVAULT_DIR / 'db.sqlite3' if TALENTVAULT_DIR.exists() else BASE_DIR / 'db.sqlite3'
+# Local development / tests use HireNest's OWN SQLite file.
+use_sqlite = (
+    'test' in sys.argv
+    or 'pytest' in sys.modules
+    or os.environ.get('USE_SQLITE') == '1'
+)
+
+if use_sqlite:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': sqlite_path,
+            'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
+elif HIRENEST_DATABASE_URL:
+    # Production: use HireNest's dedicated database only.
+    DATABASES['default'] = dj_database_url.parse(
+        HIRENEST_DATABASE_URL,
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+elif is_production and not os.environ.get('HIRENEST_DB_HOST'):
+    # Fail fast instead of silently connecting to TalentVault's database.
+    raise ImproperlyConfigured(
+        "HIRENEST_DATABASE_URL is required in production. HireNest must use its "
+        "own database and will not fall back to TalentVault's DATABASE_URL."
+    )
+# else: individual HIRENEST_DB_* variables (defined above) are used.
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -330,7 +349,8 @@ else:
         },
     }
     MEDIA_URL = '/media/'
-    MEDIA_ROOT = TALENTVAULT_DIR / 'media' if TALENTVAULT_DIR.exists() else BASE_DIR / 'media'
+    # HireNest's own media directory — never TalentVault's.
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
