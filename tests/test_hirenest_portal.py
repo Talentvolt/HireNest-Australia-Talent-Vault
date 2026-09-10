@@ -354,6 +354,29 @@ class HireNestAustraliaStandaloneTests(TestCase):
         if expected:
             self.assertEqual(app.client_id, expected)
 
+    def test_sync_refuses_talentvault_google_client(self):
+        import os
+        from unittest import mock
+        from allauth.socialaccount.models import SocialApp
+        from apps.accounts.apps import sync_google_social_app
+
+        before = SocialApp.objects.filter(provider='google').first()
+        self.assertIsNotNone(before)
+        hirenest_client_id = before.client_id
+
+        # Simulate a misconfigured environment pointing at the TalentVault client.
+        with mock.patch.dict(
+            os.environ,
+            {'GOOGLE_CLIENT_ID': '889436170993-legacy.apps.googleusercontent.com'},
+        ):
+            sync_google_social_app()
+
+        apps = SocialApp.objects.filter(provider='google')
+        self.assertEqual(apps.count(), 1)
+        app = apps.first()
+        self.assertFalse(app.client_id.startswith('889436170993-'))
+        self.assertEqual(app.client_id, hirenest_client_id)
+
     def test_allauth_configured_for_username_less_custom_user(self):
         from django.conf import settings as dj_settings
         from django.test import RequestFactory

@@ -4,6 +4,12 @@ from django.db.models.signals import post_migrate
 
 logger = logging.getLogger(__name__)
 
+# Google OAuth client project prefixes that must NEVER be used by HireNest
+# Australia. 889436170993 is the separate TalentVault project's OAuth client.
+LEGACY_TALENTVAULT_CLIENT_PREFIXES = ("889436170993-",)
+# HireNest Australia's own Google OAuth client project.
+HIRENEST_GOOGLE_CLIENT_PREFIX = "995899210342-"
+
 COMPANY_RECRUITERS = [
     {"email": "snehal.2020technologies@gmail.com", "first_name": "Snehal", "last_name": "Patil", "role": "SUPER_ADMIN"},
     {"email": "chhayajoshi.2020technologies.in@gmail.com", "first_name": "Chhaya", "last_name": "Joshi", "role": "SUPER_ADMIN"},
@@ -158,6 +164,20 @@ def sync_google_social_app():
     client_id = _clean_google_env('GOOGLE_CLIENT_ID')
     client_secret = _clean_google_env('GOOGLE_CLIENT_SECRET')
 
+    # Hard guard: never copy the separate TalentVault project's OAuth client
+    # into the HireNest SocialApp, even if the environment is misconfigured.
+    refused_legacy = False
+    if client_id and client_id.startswith(LEGACY_TALENTVAULT_CLIENT_PREFIXES):
+        logger.critical(
+            "Refusing GOOGLE_CLIENT_ID %s... because it belongs to the TalentVault "
+            "project, not HireNest Australia. Set the HireNest client (project %s).",
+            client_id[:16],
+            HIRENEST_GOOGLE_CLIENT_PREFIX.rstrip('-'),
+        )
+        client_id = ''
+        client_secret = ''
+        refused_legacy = True
+
     google_apps = list(SocialApp.objects.filter(provider='google').order_by('id'))
     app = google_apps[0] if google_apps else SocialApp(provider='google', name='Google')
 
@@ -186,6 +206,11 @@ def sync_google_social_app():
         logger.info(
             "Google OAuth SocialApp synced for %s (client_id=%s..., site_id=%s, removed_duplicates=%s)",
             site_domain, client_id[:24], site.id, removed,
+        )
+    elif refused_legacy:
+        logger.error(
+            "Google OAuth is NOT configured for HireNest: the provided client id "
+            "belongs to TalentVault and was refused."
         )
     else:
         logger.warning(

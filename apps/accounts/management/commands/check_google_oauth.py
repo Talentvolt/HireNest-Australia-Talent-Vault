@@ -8,6 +8,11 @@ from django.test import Client, RequestFactory
 from allauth.socialaccount.adapter import get_adapter
 from allauth.socialaccount.models import SocialApp
 
+from apps.accounts.apps import (
+    HIRENEST_GOOGLE_CLIENT_PREFIX,
+    LEGACY_TALENTVAULT_CLIENT_PREFIXES,
+)
+
 
 def _mask(value):
     """Show enough of the client id to identify the GCP project, hide the rest."""
@@ -24,6 +29,30 @@ def _clean(name):
     if value.startswith(f"{name}="):
         value = value[len(f"{name}="):].strip()
     return value
+
+
+# Known legacy Google OAuth clients that must NOT be used for HireNest Australia.
+# Using one of these produces redirect_uri_mismatch for hirenest.com.au.
+LEGACY_CLIENT_PREFIXES = {
+    prefix: "old TalentVault OAuth client"
+    for prefix in LEGACY_TALENTVAULT_CLIENT_PREFIXES
+}
+
+
+def _legacy_warning(value):
+    for prefix, label in LEGACY_CLIENT_PREFIXES.items():
+        if value and value.startswith(prefix):
+            return (
+                f"WARNING: this is the {label} (project {prefix.rstrip('-')}), "
+                "not the HireNest Australia client -> redirect_uri_mismatch"
+            )
+    return None
+
+
+def _hirenest_note(value):
+    if value and value.startswith(HIRENEST_GOOGLE_CLIENT_PREFIX):
+        return f"OK: HireNest Australia client (project {HIRENEST_GOOGLE_CLIENT_PREFIX.rstrip('-')})"
+    return None
 
 
 class Command(BaseCommand):
@@ -64,6 +93,9 @@ class Command(BaseCommand):
         self.stdout.write(f"  SECURE_PROXY_SSL_HEADER  : {getattr(settings, 'SECURE_PROXY_SSL_HEADER', None)}")
         self.stdout.write(f"  GOOGLE_CLIENT_ID (env)   : {_mask(env_client_id)}")
         self.stdout.write(f"  GOOGLE_CLIENT_SECRET set : {bool(env_client_secret)}")
+        env_note = _hirenest_note(env_client_id)
+        if env_note:
+            self.stdout.write(self.style.SUCCESS(f"  {env_note}"))
 
         self.stdout.write("=== Runtime app selection (adapter.get_app) ===")
         request = RequestFactory().get("/accounts/google/login/", HTTP_HOST=host, secure=True)
@@ -83,6 +115,13 @@ class Command(BaseCommand):
                 "  env GOOGLE_CLIENT_SECRET vs selected : "
                 f"{'MATCH' if env_client_secret and selected.secret == env_client_secret else 'MISMATCH/unknown'}"
             )
+            for value in (selected.client_id, env_client_id):
+                warning = _legacy_warning(value)
+                if warning:
+                    self.stdout.write(self.style.ERROR(f"  {warning}"))
+            sel_note = _hirenest_note(selected.client_id)
+            if sel_note:
+                self.stdout.write(self.style.SUCCESS(f"  {sel_note}"))
 
         self.stdout.write("=== Actual generated Google authorization URL ===")
         try:
@@ -104,6 +143,9 @@ class Command(BaseCommand):
                 f"  client_id matches env    : "
                 f"{'YES' if env_client_id and client_id == env_client_id else 'NO'}"
             )
+            warning = _legacy_warning(client_id)
+            if warning:
+                self.stdout.write(self.style.ERROR(f"  {warning}"))
         else:
             self.stdout.write(f"  unexpected Location: {location or '(none)'}")
 
