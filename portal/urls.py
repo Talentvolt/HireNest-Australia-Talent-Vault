@@ -24,6 +24,16 @@ from .views import (
     HirenestCareerAdviceView,
     HirenestResourcesView,
 )
+from .employer_views import (
+    HirenestEmployerRegistrationPendingView,
+    HirenestEmployerDashboardView,
+    HirenestEmployerJobsView,
+    HirenestEmployerJobCreateView,
+    HirenestEmployerCandidatesView,
+    HirenestEmployerProfileView,
+    HirenestEmployerApprovalsView,
+    HirenestEmployerApprovalsAPIView,
+)
 
 app_name = 'portal'
 
@@ -49,10 +59,25 @@ urlpatterns = [
     path('applications/', HirenestCandidateApplicationsView.as_view(), name='candidate_applications'),
     path('saved-jobs/', HirenestCandidateSavedJobsView.as_view(), name='candidate_saved_jobs'),
 
-    # Employer Suite
+    # Employer Suite (HireNest-only — never redirects to TalentVault)
     path('employers/', HirenestEmployerLandingView.as_view(), name='employer_landing'),
     path('employers/register/', HirenestEmployerRegisterView.as_view(), name='employer_register'),
+    path('employers/registration-pending/', HirenestEmployerRegistrationPendingView.as_view(), name='employer_registration_pending'),
     path('employers/login/', HirenestEmployerLoginView.as_view(), name='employer_login'),
+
+    # HireNest Recruiter Workspace (approved employers only)
+    path('employers/dashboard/', HirenestEmployerDashboardView.as_view(), name='employer_dashboard'),
+    path('employers/jobs/', HirenestEmployerJobsView.as_view(), name='employer_jobs'),
+    path('employers/jobs/new/', HirenestEmployerJobCreateView.as_view(), name='employer_job_create'),
+    path('employers/candidates/', HirenestEmployerCandidatesView.as_view(), name='employer_candidates'),
+    path('employers/profile/', HirenestEmployerProfileView.as_view(), name='employer_profile'),
+
+    # HireNest employer approvals (admin-only)
+    path('employers/approvals/', HirenestEmployerApprovalsView.as_view(), name='employer_approvals'),
+
+    # Secure server-to-server admin API (TalentVault Admin Portal integration)
+    path('api/admin/employer-approvals/', HirenestEmployerApprovalsAPIView.as_view(), name='employer_approvals_api'),
+    path('api/admin/employer-approvals/<uuid:user_id>/', HirenestEmployerApprovalsAPIView.as_view(), name='employer_approval_action_api'),
 
     # Informational & Directories
     path('companies/', HirenestCompaniesView.as_view(), name='companies'),

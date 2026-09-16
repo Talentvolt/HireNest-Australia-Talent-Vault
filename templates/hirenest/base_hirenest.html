@@ -60,18 +60,54 @@
                     <a href="/resources/" class="hn-nav-link {% if '/resources' in request.path %}active{% endif %}">Resources</a>
                 </nav>
 
-                <!-- Right Actions / User Navigation -->
+                <!-- Right Actions / User Navigation (role-aware) -->
                 <div class="hn-nav-actions">
 
-                    <!-- For Employers -->
-                    <a href="/employers/" class="hn-btn-employer">
-                        <i class="bi bi-building" aria-hidden="true"></i>
-                        <span>For Employers</span>
-                    </a>
-
-                    <!-- Public Auth Trigger Buttons (opens centered auth modal) -->
-                    <button type="button" class="hn-btn-outline" onclick="openCandidateAuthModal('login')">Log In</button>
-                    <button type="button" class="hn-btn-primary" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
+                    {% if nav_role == 'ANONYMOUS' %}
+                        <!-- Anonymous: employer CTA + candidate auth entry -->
+                        <a href="/employers/" class="hn-btn-employer">
+                            <i class="bi bi-building" aria-hidden="true"></i>
+                            <span>For Employers</span>
+                        </a>
+                        <button type="button" class="hn-btn-outline" onclick="openCandidateAuthModal('login')">Log In</button>
+                        <button type="button" class="hn-btn-primary" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
+                    {% else %}
+                        <!-- Signed-in: single account menu replaces auth buttons -->
+                        <div class="dropdown hn-account">
+                            <button class="hn-account-toggle dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Account menu">
+                                <span class="hn-account-avatar" aria-hidden="true">{{ nav_user_initial }}</span>
+                                <span class="hn-account-name d-none d-xl-inline">{{ nav_user_display }}</span>
+                                {% if nav_role == 'EMPLOYER_PENDING' %}
+                                    <span class="hn-account-dot hn-account-dot-warning" title="Awaiting approval"></span>
+                                {% elif nav_role == 'EMPLOYER_REJECTED' %}
+                                    <span class="hn-account-dot hn-account-dot-danger" title="Account not approved"></span>
+                                {% endif %}
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end hn-account-menu">
+                                <li class="hn-account-menu-head">
+                                    <div class="fw-semibold text-dark text-truncate">{{ nav_user_display }}</div>
+                                    {% if nav_status_message %}
+                                        <div class="small {% if nav_status_tone == 'danger' %}text-danger{% else %}text-warning-emphasis{% endif %}">{{ nav_status_message }}</div>
+                                    {% endif %}
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                {% for link in nav_account_links %}
+                                    <li>
+                                        <a class="dropdown-item hn-account-item" href="{{ link.url }}">
+                                            <i class="bi {{ link.icon }} me-2" aria-hidden="true"></i>{{ link.label }}
+                                        </a>
+                                    </li>
+                                {% endfor %}
+                                {% if nav_logout_link %}
+                                    <li>
+                                        <a class="dropdown-item hn-account-item hn-account-logout" href="{{ nav_logout_link.url }}">
+                                            <i class="bi {{ nav_logout_link.icon }} me-2" aria-hidden="true"></i>{{ nav_logout_link.label }}
+                                        </a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    {% endif %}
 
                     <!-- Mobile Menu Toggler -->
                     <button class="hn-mobile-toggle" type="button" data-bs-toggle="offcanvas" data-bs-target="#hnMobileMenu" aria-controls="hnMobileMenu" aria-expanded="false" aria-label="Open navigation menu">
@@ -100,13 +136,33 @@
                 <a href="/career-advice/" class="hn-mobile-link {% if '/career-advice' in request.path %}active{% endif %}"><i class="bi bi-journal-text" aria-hidden="true"></i><span>Career Advice</span></a>
                 <a href="/salary-guide/" class="hn-mobile-link {% if '/salary-guide' in request.path %}active{% endif %}"><i class="bi bi-currency-dollar" aria-hidden="true"></i><span>Salary Guide</span></a>
                 <a href="/resources/" class="hn-mobile-link {% if '/resources' in request.path %}active{% endif %}"><i class="bi bi-folder2-open" aria-hidden="true"></i><span>Resources</span></a>
-                <a href="/employers/" class="hn-mobile-link hn-mobile-link-employer {% if '/employers' in request.path %}active{% endif %}"><i class="bi bi-building-gear" aria-hidden="true"></i><span>For Employers</span></a>
+                {% if nav_role == 'ANONYMOUS' %}
+                    <a href="/employers/" class="hn-mobile-link hn-mobile-link-employer {% if '/employers' in request.path %}active{% endif %}"><i class="bi bi-building-gear" aria-hidden="true"></i><span>For Employers</span></a>
+                {% else %}
+                    {% for link in nav_account_links %}
+                        <a href="{{ link.url }}" class="hn-mobile-link {% if link.url in request.path %}active{% endif %}"><i class="bi {{ link.icon }}" aria-hidden="true"></i><span>{{ link.label }}</span></a>
+                    {% endfor %}
+                {% endif %}
             </nav>
 
             <div class="hn-mobile-actions">
-                <button type="button" class="hn-btn-primary" data-auth-modal="register">Sign In / Register</button>
-                <button type="button" class="hn-btn-outline" data-auth-modal="login">Log In</button>
-                <a href="/employers/login/" class="hn-mobile-employer-link">Employer Log In <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+                {% if nav_role == 'ANONYMOUS' %}
+                    <button type="button" class="hn-btn-primary" data-auth-modal="register">Sign In / Register</button>
+                    <button type="button" class="hn-btn-outline" data-auth-modal="login">Log In</button>
+                    <a href="/employers/login/" class="hn-mobile-employer-link">Employer Log In <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+                {% else %}
+                    {% if nav_status_message %}
+                        <div class="hn-mobile-status hn-mobile-status-{{ nav_status_tone }}">
+                            <i class="bi {% if nav_status_tone == 'danger' %}bi-exclamation-octagon-fill{% else %}bi-hourglass-split{% endif %}" aria-hidden="true"></i>
+                            <span>{{ nav_status_message }}</span>
+                        </div>
+                    {% endif %}
+                    {% if nav_logout_link %}
+                        <a href="{{ nav_logout_link.url }}" class="hn-btn-outline hn-mobile-logout">
+                            <i class="bi {{ nav_logout_link.icon }}" aria-hidden="true"></i>{{ nav_logout_link.label }}
+                        </a>
+                    {% endif %}
+                {% endif %}
             </div>
         </div>
     </div>
@@ -137,7 +193,7 @@
             <div class="row g-4">
                 
                 <!-- Column 1: Brand Info -->
-                <div class="col-lg-4 col-md-6">
+                <div class="col-lg-3 col-md-6">
                     <div class="mb-3">
                         <a href="/" class="hn-footer-logo-wrap text-decoration-none">
                             <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-footer-logo">
@@ -156,24 +212,22 @@
                 <div class="col-lg-2 col-md-6 col-6">
                     <h6 class="hn-footer-heading">Job Seekers</h6>
                     <ul class="hn-footer-links">
-                        <li><a href="/jobs/">Search All Jobs</a></li>
+                        <li><a href="/jobs/">Search Jobs</a></li>
                         <li><a href="/companies/">Browse Companies</a></li>
                         <li><a href="/dashboard/">Candidate Dashboard</a></li>
                         <li><a href="/saved-jobs/">Saved Jobs</a></li>
-                        <li><a href="/applications/">My Applications</a></li>
-                        <li><a href="/profile/">Candidate Profile</a></li>
+                        <li><a href="/applications/">Applications</a></li>
                     </ul>
                 </div>
 
                 <!-- Column 3: Career & Insights -->
-                <div class="col-lg-3 col-md-6 col-6">
-                    <h6 class="hn-footer-heading">Career Insights</h6>
+                <div class="col-lg-2 col-md-6 col-6">
+                    <h6 class="hn-footer-heading">Career</h6>
                     <ul class="hn-footer-links">
                         <li><a href="/salary-guide/">Australian Salary Guide</a></li>
                         <li><a href="/career-advice/">Australian Resume Advice</a></li>
-                        <li><a href="/career-advice/">Interview Preparation (STAR)</a></li>
-                        <li><a href="/resources/">Resume Templates & Formats</a></li>
-                        <li><a href="/resources/">Working Rights & Superannuation</a></li>
+                        <li><a href="/career-advice/">Interview Preparation</a></li>
+                        <li><a href="/resources/">Resume Templates</a></li>
                     </ul>
                 </div>
 
@@ -185,7 +239,25 @@
                         <li><a href="/employers/register/">Register Employer Account</a></li>
                         <li><a href="/employers/login/">Employer Log In</a></li>
                         <li><a href="/employers/">Intelligent Candidate Search</a></li>
-                        <li><a href="/employers/">Employer Workspace Access</a></li>
+                    </ul>
+                </div>
+
+                <!-- Column 5: Account (role-aware) -->
+                <div class="col-lg-2 col-md-6 col-6">
+                    <h6 class="hn-footer-heading">Account</h6>
+                    <ul class="hn-footer-links">
+                        {% if nav_role == 'ANONYMOUS' %}
+                            <li><a href="/login/">Log In</a></li>
+                            <li><a href="/register/">Sign In / Register</a></li>
+                            <li><a href="/employers/login/">Employer Log In</a></li>
+                        {% else %}
+                            {% for link in nav_account_links %}
+                                <li><a href="{{ link.url }}">{{ link.label }}</a></li>
+                            {% endfor %}
+                            {% if nav_logout_link %}
+                                <li><a href="{{ nav_logout_link.url }}">{{ nav_logout_link.label }}</a></li>
+                            {% endif %}
+                        {% endif %}
                     </ul>
                 </div>
 
@@ -224,7 +296,7 @@
         </div>
     </footer>
 
-    <!-- Candidate Sign In / Register & Onboarding Modal Component -->
+    <!-- Candidate authentication (Google) modal component -->
     {% include "hirenest/auth_modal.html" %}
 
     <!-- Bootstrap JS Bundle -->

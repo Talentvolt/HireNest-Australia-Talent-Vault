@@ -12,7 +12,7 @@
                 <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" style="height: 48px; width: auto; object-fit: contain;">
             </a>
             <h1 class="hn-auth-title">Register Employer Account</h1>
-            <p class="hn-auth-subtitle">Create your Australian organization account to post jobs and access the Recruiter ATS Workspace.</p>
+            <p class="hn-auth-subtitle">Create your Australian organization account on HireNest. New employer accounts are reviewed and approved before workspace access is granted.</p>
         </div>
 
         {% if errors %}
@@ -75,7 +75,7 @@
             <div class="row g-3 mb-3">
                 <div class="col-sm-6">
                     <label class="hn-form-label">Official Work Email <span class="text-danger">*</span></label>
-                    <input type="email" name="email" class="form-control hn-form-control" value="{{ email|default:'' }}" placeholder="e.g. hr@company.com.au" required autocomplete="email">
+                    <input type="email" name="email" class="form-control hn-form-control" value="{{ email|default:'' }}" placeholder="e.g. hr@company.com" required autocomplete="email">
                 </div>
                 <div class="col-sm-6">
                     <label class="hn-form-label">Contact Phone Number <span class="text-danger">*</span></label>
@@ -105,7 +105,7 @@
 
             <!-- Submit Button -->
             <button type="submit" class="btn hn-btn-primary w-100 py-2.5 fw-bold justify-content-center mb-3">
-                Register & Enter Recruiter Workspace
+                Register Employer Account
             </button>
 
             <!-- Login Link -->

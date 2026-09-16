@@ -4,6 +4,7 @@ from django.core.validators import FileExtensionValidator
 from apps.accounts.models import User
 from apps.candidates.models import CandidateProfile
 from apps.companies.models import Company
+from apps.jobs.models import Job
 from .services import AUSTRALIAN_CLASSIFICATIONS
 
 CITIZENSHIP_CHOICES = [
@@ -107,6 +108,36 @@ class EmployerLoginForm(forms.Form):
     email = forms.EmailField(required=True, label="Work Email Address")
     password = forms.CharField(widget=forms.PasswordInput, required=True, label="Password")
     remember_me = forms.BooleanField(required=False, initial=True)
+
+
+class EmployerJobForm(forms.ModelForm):
+    """
+    HireNest-only job posting form for the employer recruiter workspace.
+
+    Only Australian (AUD) fields are exposed. The company, currency and audit
+    fields are set server-side by the view.
+    """
+    class Meta:
+        model = Job
+        fields = [
+            'title', 'department', 'location', 'job_type', 'work_mode',
+            'min_experience', 'max_experience', 'min_salary', 'max_salary',
+            'required_skills_text', 'preferred_skills_text', 'description',
+            'status',
+        ]
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 6}),
+            'required_skills_text': forms.TextInput(attrs={'placeholder': 'e.g. Python, Django, AWS'}),
+            'preferred_skills_text': forms.TextInput(attrs={'placeholder': 'e.g. Kubernetes, Terraform'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        choice_fields = {'job_type', 'work_mode', 'status'}
+        for name, field in self.fields.items():
+            css = 'form-select hn-form-control' if name in choice_fields else 'form-control hn-form-control'
+            existing = field.widget.attrs.get('class', '')
+            field.widget.attrs['class'] = f"{existing} {css}".strip()
 
 
 class JobApplicationForm(forms.Form):

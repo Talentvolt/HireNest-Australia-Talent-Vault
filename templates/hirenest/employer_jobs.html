@@ -1,0 +1,58 @@
+{% extends "hirenest/employer_base.html" %}
+
+{% block employer_title %}Manage Jobs{% endblock %}
+{% block employer_heading %}Manage Jobs{% endblock %}
+
+{% block employer_content %}
+<div class="hn-workspace-card p-0 overflow-hidden">
+    <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+        <span class="fw-bold text-dark"><i class="bi bi-briefcase me-2 text-primary"></i>Your HireNest Job Postings</span>
+        <a href="/employers/jobs/new/" class="btn btn-sm hn-btn-primary"><i class="bi bi-plus-lg me-1"></i>Post New Job</a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="px-3 py-2 small text-uppercase">Title</th>
+                    <th class="py-2 small text-uppercase">Location</th>
+                    <th class="py-2 small text-uppercase">Type</th>
+                    <th class="py-2 small text-uppercase">Status</th>
+                    <th class="py-2 small text-uppercase">Posted</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                    <tr>
+                        <td class="px-3 fw-semibold text-dark">{{ job.title }}</td>
+                        <td class="text-muted small">{{ job.location }}</td>
+                        <td class="text-muted small">{{ job.get_job_type_display }}</td>
+                        <td><span class="badge {% if job.status == 'ACTIVE' %}bg-success{% else %}bg-secondary{% endif %}">{{ job.status }}</span></td>
+                        <td class="text-muted small">{{ job.created_at|date:"M d, Y" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-5">
+                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>No jobs posted yet.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if is_paginated %}
+<nav class="mt-3" aria-label="Jobs pagination">
+    <ul class="pagination pagination-sm justify-content-center mb-0">
+        {% if page_obj.has_previous %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+        {% endif %}
+        <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}
+            <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}

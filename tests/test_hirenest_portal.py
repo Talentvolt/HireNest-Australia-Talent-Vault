@@ -126,28 +126,15 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(response, "Senior Python Backend Engineer")
         self.assertContains(response, "Atlassian Australia")
 
-    def test_public_navbar_always_shows_public_auth_buttons(self):
-        # The public navbar always shows the same items, regardless of auth state.
-        def assert_public_navbar(resp):
-            self.assertContains(resp, "For Employers")
-            self.assertContains(resp, "Log In")
-            self.assertContains(resp, "Sign In / Register")
-            self.assertNotContains(resp, "Recruiter Workspace")
-            self.assertNotContains(resp, "Admin Workspace")
-
-        assert_public_navbar(self.client.get('/'))
-
-        self.client.force_login(self.candidate_user)
-        assert_public_navbar(self.client.get('/'))
-
-        self.client.force_login(self.recruiter_user)
-        assert_public_navbar(self.client.get('/'))
-
-        admin_user = User.objects.create_superuser(
-            email="navbar.admin@hirenest.com.au", password="AdminPassword123!"
-        )
-        self.client.force_login(admin_user)
-        assert_public_navbar(self.client.get('/'))
+    def test_anonymous_navbar_shows_public_auth_buttons(self):
+        # Anonymous visitors see the public auth entry points and no workspace links.
+        resp = self.client.get('/')
+        self.assertContains(resp, "For Employers")
+        self.assertContains(resp, "Log In")
+        self.assertContains(resp, "Sign In / Register")
+        self.assertNotContains(resp, "Recruiter Workspace")
+        self.assertNotContains(resp, "Admin Workspace")
+        self.assertNotContains(resp, "Log Out")
 
     # --------------------------------------------------------------------------
     # 2. Strict Backend-Enforced Australia Jobs Only Filtering Tests
@@ -650,7 +637,7 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertContains(response, "Build your team.")
         self.assertContains(response, "employer-hero")
 
-    def test_employer_registration_creates_talentvault_db_records(self):
+    def test_employer_registration_creates_pending_hirenest_employer(self):
         response = self.client.get('/employers/register/')
         self.assertEqual(response.status_code, 200)
 
@@ -667,12 +654,15 @@ class HireNestAustraliaStandaloneTests(TestCase):
         }
         post_response = self.client.post('/employers/register/', data=payload, follow=False)
         self.assertEqual(post_response.status_code, 302)
-        expected_target = getattr(settings, 'TALENTVAULT_RECRUITER_WORKSPACE_URL', '/dashboard/recruiter/')
-        self.assertIn(expected_target, post_response.url)
+        # Registration stays inside HireNest and never redirects to TalentVault.
+        self.assertEqual(post_response.url, '/employers/registration-pending/')
+        self.assertNotIn('talent-vault.in', post_response.url)
 
         new_recruiter = User.objects.filter(email='hr@qantas.com.au').first()
         self.assertIsNotNone(new_recruiter)
         self.assertEqual(new_recruiter.role, User.Role.RECRUITER)
+        # New employers must start PENDING and must not be auto-activated.
+        self.assertEqual(new_recruiter.recruiter_status, User.RecruiterStatus.PENDING)
 
     # --------------------------------------------------------------------------
     # 14. Informational Pages Tests

@@ -1,0 +1,38 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}Registration Received — HireNest Australia Employer{% endblock %}
+
+{% block content %}
+<section class="hn-auth-wrapper">
+    <div class="hn-auth-card text-center" style="max-width: 620px;">
+        <div class="mb-3">
+            <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-warning bg-opacity-10 text-warning" style="width: 64px; height: 64px; font-size: 1.8rem;">
+                <i class="bi bi-hourglass-split"></i>
+            </span>
+        </div>
+        <h1 class="hn-auth-title">Employer registration received</h1>
+        <p class="hn-auth-subtitle mb-4">
+            Thank you for registering with HireNest Australia. Your employer account is now
+            <strong>awaiting approval</strong>. Our team reviews new employer registrations
+            before activating workspace access.
+        </p>
+
+        <div class="alert alert-info text-start small rounded-3">
+            <div class="fw-bold mb-1"><i class="bi bi-info-circle-fill me-1"></i>What happens next?</div>
+            <ul class="mb-0 ps-3">
+                <li>Your registration is reviewed by our verification team.</li>
+                <li>You will be able to sign in once your account is approved.</li>
+                <li>Until then, signing in will show an "awaiting approval" message.</li>
+            </ul>
+        </div>
+
+        <div class="d-grid gap-2 mt-4">
+            <a href="/employers/login/" class="btn hn-btn-primary fw-bold py-2.5">
+                <i class="bi bi-box-arrow-in-right me-1"></i>Go to Employer Sign In
+            </a>
+            <a href="/" class="btn hn-btn-outline py-2.5">Back to HireNest Home</a>
+        </div>
+    </div>
+</section>
+{% endblock %}

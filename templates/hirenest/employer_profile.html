@@ -1,0 +1,38 @@
+{% extends "hirenest/employer_base.html" %}
+
+{% block employer_title %}Company Profile{% endblock %}
+{% block employer_heading %}Company Profile{% endblock %}
+
+{% block employer_content %}
+<div class="hn-workspace-card p-3 p-md-4">
+    <form method="post" action="/employers/profile/">
+        {% csrf_token %}
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="hn-form-label">Company / Organization Name</label>
+                <input type="text" name="name" value="{{ company.name|default:'' }}" class="form-control hn-form-control">
+            </div>
+            <div class="col-md-6">
+                <label class="hn-form-label">Industry</label>
+                <input type="text" name="industry" value="{{ company.industry|default:'' }}" class="form-control hn-form-control">
+            </div>
+            <div class="col-md-6">
+                <label class="hn-form-label">Company Website</label>
+                <input type="url" name="website" value="{{ company.website|default:'' }}" class="form-control hn-form-control" placeholder="https://company.com">
+            </div>
+            <div class="col-md-6">
+                <label class="hn-form-label">Australian HQ Location</label>
+                <input type="text" name="location" value="{{ company.location|default:'' }}" class="form-control hn-form-control">
+            </div>
+            <div class="col-12">
+                <label class="hn-form-label">About the Company</label>
+                <textarea name="description" rows="5" class="form-control hn-form-control">{{ company.description|default:'' }}</textarea>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <button type="submit" class="btn hn-btn-primary fw-bold px-4"><i class="bi bi-check-lg me-1"></i>Save Profile</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

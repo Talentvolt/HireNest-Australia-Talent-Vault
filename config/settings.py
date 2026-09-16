@@ -130,10 +130,27 @@ else:
     SECURE_HSTS_PRELOAD = False
 
 # TalentVault Recruiter Workspace Target URL
+# Retained for backwards compatibility only. HireNest employer registration and
+# login must NEVER redirect into TalentVault; HireNest employers use the
+# HireNest recruiter workspace at /employers/dashboard/.
 TALENTVAULT_RECRUITER_WORKSPACE_URL = os.environ.get(
     'TALENTVAULT_RECRUITER_WORKSPACE_URL',
     'https://talent-vault.in/dashboard/recruiter/'
 )
+
+# HireNest Australia recruiter workspace (native HireNest workspace).
+HIRENEST_EMPLOYER_WORKSPACE_URL = '/employers/dashboard/'
+
+# ==============================================================================
+# Secure server-to-server integration for HireNest employer approvals.
+#
+# The TalentVault Admin Portal reads and updates HireNest employer approval
+# records through the authenticated HireNest admin API. The shared secret is
+# read from the server environment only and is never exposed to the browser.
+# If no key is configured, the integration API denies every request.
+# ==============================================================================
+HIRENEST_ADMIN_API_KEY = os.environ.get('HIRENEST_ADMIN_API_KEY', '').strip()
+HIRENEST_ADMIN_API_HEADER = 'HTTP_X_HIRENEST_ADMIN_KEY'
 
 # ==============================================================================
 # Application Definition
@@ -217,6 +234,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'portal.navigation.hirenest_navigation',
             ],
         },
     },

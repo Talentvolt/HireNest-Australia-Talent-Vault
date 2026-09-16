@@ -1,0 +1,54 @@
+{% extends "hirenest/base_hirenest.html" %}
+{% load static %}
+
+{% block title %}{% block employer_title %}Employer Workspace{% endblock %} — HireNest Australia{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hn-workspace-shell { background-color: var(--hn-bg-light, #f8fafc); min-height: 60vh; }
+    .hn-workspace-nav { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .hn-workspace-nav a {
+        text-decoration: none; font-size: .875rem; font-weight: 600;
+        padding: .5rem .9rem; border-radius: 999px; color: #334155;
+        border: 1px solid #e2e8f0; background: #fff; white-space: nowrap;
+    }
+    .hn-workspace-nav a.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .hn-workspace-card { border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; }
+    .hn-workspace-title { font-size: 1.35rem; font-weight: 800; color: #0f172a; }
+    @media (max-width: 430px) {
+        .hn-workspace-title { font-size: 1.15rem; }
+        .hn-workspace-nav a { padding: .45rem .75rem; font-size: .8rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hn-workspace-shell py-4">
+    <div class="container-xl">
+
+        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+            <div>
+                <h1 class="hn-workspace-title mb-1">{% block employer_heading %}Recruiter Workspace{% endblock %}</h1>
+                <p class="text-muted small mb-0">
+                    {{ company.name|default:"Your company" }}
+                    {% if request.user.recruiter_status == 'ACTIVE' %}
+                        <span class="badge bg-success-subtle text-success ms-2">Approved</span>
+                    {% endif %}
+                </p>
+            </div>
+            <a href="/employers/dashboard/" class="btn btn-sm hn-btn-outline align-self-start">
+                <i class="bi bi-grid-1x2 me-1"></i>Dashboard
+            </a>
+        </div>
+
+        <nav class="hn-workspace-nav mb-4" aria-label="Employer workspace navigation">
+            <a href="/employers/dashboard/" class="{% if request.resolver_match.url_name == 'employer_dashboard' %}active{% endif %}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+            <a href="/employers/jobs/" class="{% if request.resolver_match.url_name in 'employer_jobs,employer_job_create' %}active{% endif %}"><i class="bi bi-briefcase me-1"></i>Manage Jobs</a>
+            <a href="/employers/candidates/" class="{% if request.resolver_match.url_name == 'employer_candidates' %}active{% endif %}"><i class="bi bi-people me-1"></i>Find Candidates</a>
+            <a href="/employers/profile/" class="{% if request.resolver_match.url_name == 'employer_profile' %}active{% endif %}"><i class="bi bi-building me-1"></i>Company Profile</a>
+        </nav>
+
+        {% block employer_content %}{% endblock %}
+    </div>
+</div>
+{% endblock %}

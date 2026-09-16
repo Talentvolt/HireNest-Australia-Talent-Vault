@@ -8,7 +8,6 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Q, Count
 from django.utils import timezone
@@ -42,6 +41,7 @@ from .forms import (
     EmployerLoginForm,
     JobApplicationForm,
 )
+from .employer_service import employer_status_message
 
 logger = logging.getLogger(__name__)
 
@@ -792,11 +792,16 @@ class HirenestEmployerLandingView(View):
 
 
 class HirenestEmployerRegisterView(View):
-    """Employer registration on HireNest Australia."""
+    """
+    Employer registration on HireNest Australia.
+
+    Creates a HireNest employer/recruiter record in the HireNest database with
+    status PENDING. Employers are never auto-activated, are never redirected
+    into TalentVault, and are sent to a HireNest confirmation page.
+    """
     def get(self, request):
         if request.user.is_authenticated and request.user.role in [User.Role.RECRUITER, User.Role.COMPANY_ADMIN]:
-            target_url = getattr(settings, 'TALENTVAULT_RECRUITER_WORKSPACE_URL', '/dashboard/recruiter/')
-            return redirect(target_url)
+            return redirect('/employers/dashboard/')
         return render(request, 'hirenest/employer_register.html', {'locations': POPULAR_AU_LOCATIONS})
 
     def post(self, request):
@@ -811,45 +816,51 @@ class HirenestEmployerRegisterView(View):
             location = form.cleaned_data.get('location', 'Sydney NSW')
             password = form.cleaned_data['password']
 
-            # Create or get Company in shared DB
-            slug = slugify(org_name)
-            company, _ = Company.objects.get_or_create(
-                name=org_name,
-                defaults={
-                    'slug': slug,
-                    'industry': industry,
-                    'website': website,
-                    'location': location,
-                    'description': f"{org_name} is an Australian employer.",
-                    'is_active': True,
-                }
+            base_slug = slugify(org_name) or 'company'
+            slug = base_slug
+            counter = 1
+            while Company.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+
+            with transaction.atomic():
+                # HireNest company record (HireNest database only).
+                company, _ = Company.objects.get_or_create(
+                    name=org_name,
+                    defaults={
+                        'slug': slug,
+                        'industry': industry,
+                        'website': website,
+                        'location': location,
+                        'description': f"{org_name} is an Australian employer on HireNest.",
+                        'is_active': True,
+                    }
+                )
+
+                # HireNest employer/recruiter user. Starts as PENDING and is NOT
+                # activated until a TalentVault/HireNest admin approves it.
+                user = User.objects.create_user(
+                    email=email,
+                    password=password,
+                    phone_number=phone_number,
+                    role=User.Role.RECRUITER,
+                    recruiter_status=User.RecruiterStatus.PENDING,
+                    is_active=True,
+                    is_verified=False,
+                )
+
+                CompanyMember.objects.create(
+                    company=company,
+                    user=user,
+                    role=CompanyMember.MemberRole.ADMIN,
+                    designation="Hiring Lead"
+                )
+
+            messages.success(
+                request,
+                "Your HireNest employer account has been created and is awaiting approval."
             )
-
-            # Create Recruiter User in shared DB
-            user = User.objects.create_user(
-                email=email,
-                password=password,
-                phone_number=phone_number,
-                role=User.Role.RECRUITER,
-                recruiter_status=User.RecruiterStatus.ACTIVE,
-                is_active=True,
-                is_verified=True,
-            )
-
-            CompanyMember.objects.create(
-                company=company,
-                user=user,
-                role=CompanyMember.MemberRole.ADMIN,
-                designation="Hiring Lead"
-            )
-
-            auth_user = authenticate(request, username=email, password=password)
-            if auth_user:
-                login(request, auth_user, backend='django.contrib.auth.backends.ModelBackend')
-                target_url = getattr(settings, 'TALENTVAULT_RECRUITER_WORKSPACE_URL', '/dashboard/recruiter/')
-                return redirect(target_url)
-
-            return redirect('/employers/login/')
+            return redirect('/employers/registration-pending/')
 
         errors = [err for err_list in form.errors.values() for err in err_list]
         return render(request, 'hirenest/employer_register.html', {
@@ -866,11 +877,21 @@ class HirenestEmployerRegisterView(View):
 
 
 class HirenestEmployerLoginView(View):
-    """Employer login on HireNest Australia."""
+    """
+    Employer login on HireNest Australia.
+
+    Approved employers are sent to the HireNest recruiter workspace. Pending,
+    rejected and suspended employers receive a clear status message and are
+    never redirected into TalentVault.
+    """
     def get(self, request):
         if request.user.is_authenticated and request.user.role in [User.Role.RECRUITER, User.Role.COMPANY_ADMIN]:
-            target_url = getattr(settings, 'TALENTVAULT_RECRUITER_WORKSPACE_URL', '/dashboard/recruiter/')
-            return redirect(target_url)
+            if request.user.recruiter_status == User.RecruiterStatus.ACTIVE:
+                return redirect('/employers/dashboard/')
+            status = request.user.recruiter_status
+            logout(request)
+            messages.warning(request, employer_status_message(status))
+            return redirect('/employers/login/')
         return render(request, 'hirenest/employer_login.html')
 
     def post(self, request):
@@ -881,24 +902,44 @@ class HirenestEmployerLoginView(View):
             remember_me = form.cleaned_data.get('remember_me', True)
 
             user = authenticate(request, username=email, password=password)
-            if user is not None and user.is_active:
-                if user.role not in [User.Role.RECRUITER, User.Role.COMPANY_ADMIN, User.Role.SUPER_ADMIN]:
+
+            if user is None:
+                # An employer may exist but be inactive (rejected/suspended).
+                # Verify the password before revealing the account status.
+                existing = User.objects.filter(email__iexact=email).first()
+                if (
+                    existing
+                    and existing.role in [User.Role.RECRUITER, User.Role.COMPANY_ADMIN]
+                    and existing.check_password(password)
+                    and existing.recruiter_status != User.RecruiterStatus.ACTIVE
+                ):
                     return render(request, 'hirenest/employer_login.html', {
-                        'error': 'This account is registered as a Candidate. Please sign in via the Candidate Portal.',
+                        'error': employer_status_message(existing.recruiter_status),
+                        'email': email,
+                    })
+                return render(request, 'hirenest/employer_login.html', {
+                    'error': 'Invalid work email or password. Please try again.',
+                    'email': email,
+                })
+
+            if user.role not in [User.Role.RECRUITER, User.Role.COMPANY_ADMIN, User.Role.SUPER_ADMIN]:
+                return render(request, 'hirenest/employer_login.html', {
+                    'error': 'This account is registered as a Candidate. Please sign in via the Candidate Portal.',
+                    'email': email,
+                })
+
+            if user.role in [User.Role.RECRUITER, User.Role.COMPANY_ADMIN]:
+                if user.recruiter_status != User.RecruiterStatus.ACTIVE:
+                    return render(request, 'hirenest/employer_login.html', {
+                        'error': employer_status_message(user.recruiter_status),
                         'email': email,
                     })
 
-                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-                if not remember_me:
-                    request.session.set_expiry(0)
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            if not remember_me:
+                request.session.set_expiry(0)
 
-                target_url = getattr(settings, 'TALENTVAULT_RECRUITER_WORKSPACE_URL', '/dashboard/recruiter/')
-                return redirect(target_url)
-
-            return render(request, 'hirenest/employer_login.html', {
-                'error': 'Invalid work email or password. Please try again.',
-                'email': email,
-            })
+            return redirect('/employers/dashboard/')
 
         return render(request, 'hirenest/employer_login.html', {
             'error': 'Please provide a valid work email and password.',

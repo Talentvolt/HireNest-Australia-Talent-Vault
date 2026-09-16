@@ -37,3 +37,7 @@ services:
           property: connectionString
       - key: TALENTVAULT_RECRUITER_WORKSPACE_URL
         value: https://talent-vault.in/dashboard/recruiter/
+      # Shared secret for the TalentVault Admin Portal -> HireNest employer
+      # approvals integration. Must match TalentVault's HIRENEST_ADMIN_API_KEY.
+      - key: HIRENEST_ADMIN_API_KEY
+        sync: false

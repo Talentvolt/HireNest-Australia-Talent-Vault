@@ -34,6 +34,15 @@ CANDIDATE_PROTECTED_PREFIXES = (
     '/onboarding/',
 )
 
+# HireNest employer workspace is separate from the candidate portal and from
+# TalentVault. Unauthenticated visitors are sent to the HireNest employer login.
+EMPLOYER_PROTECTED_PREFIXES = (
+    '/employers/dashboard/',
+    '/employers/jobs/',
+    '/employers/candidates/',
+    '/employers/profile/',
+)
+
 class HirenestAccessMiddleware:
     """
     Middleware for HireNest Australia portal.
@@ -59,6 +68,11 @@ class HirenestAccessMiddleware:
 
         # Unauthenticated access control
         if not request.user.is_authenticated:
+            is_employer_protected = any(path.startswith(prefix) for prefix in EMPLOYER_PROTECTED_PREFIXES)
+            if is_employer_protected:
+                res = redirect(f'/employers/login/?next={path}')
+                return self._add_no_cache_headers(res)
+
             is_protected = any(path.startswith(prefix) for prefix in CANDIDATE_PROTECTED_PREFIXES)
             if is_protected or path.endswith('/apply/'):
                 res = redirect(f'/login/?next={path}')

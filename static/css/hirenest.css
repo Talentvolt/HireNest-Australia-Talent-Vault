@@ -413,6 +413,132 @@ body.hirenest-body {
   outline-offset: 2px;
 }
 
+/* --- Role-aware account menu (signed-in users) --- */
+.hn-account {
+  position: relative;
+  display: none;
+}
+
+.hn-account-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 40px;
+  padding: 0 0.75rem 0 0.5rem;
+  background-color: #ffffff;
+  border: 1px solid var(--hn-border);
+  border-radius: 999px;
+  color: var(--hn-navy);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.hn-account-toggle:hover,
+.hn-account-toggle:focus-visible {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.hn-account-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: var(--hn-blue);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.hn-account-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hn-account-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+.hn-account-dot-warning { background-color: #f59e0b; }
+.hn-account-dot-danger { background-color: #dc2626; }
+
+.hn-account-menu {
+  min-width: 250px;
+  border: 1px solid var(--hn-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+  padding: 0.4rem;
+}
+
+.hn-account-menu-head {
+  padding: 0.5rem 0.75rem 0.35rem;
+}
+
+.hn-account-item {
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--hn-text-primary);
+  padding: 0.5rem 0.75rem;
+}
+
+.hn-account-item:hover,
+.hn-account-item:focus {
+  background-color: #f0f9ff;
+  color: var(--hn-blue);
+}
+
+.hn-account-logout { color: #dc2626; }
+
+.hn-account-logout:hover,
+.hn-account-logout:focus {
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+@media (min-width: 992px) {
+  .hn-account { display: block; }
+}
+
+/* Mobile role-aware status + logout */
+.hn-mobile-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.hn-mobile-status-warning {
+  background-color: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.hn-mobile-status-danger {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.hn-mobile-logout {
+  text-decoration: none;
+}
+
 /* --- Hero Section (Candidate) --- */
 .hn-hero-section {
   position: relative;
