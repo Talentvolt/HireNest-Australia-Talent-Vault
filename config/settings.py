@@ -264,14 +264,10 @@ DATABASES = {
 
 HIRENEST_DATABASE_URL = os.environ.get('HIRENEST_DATABASE_URL')
 
-# Local development / tests use HireNest's OWN SQLite file.
-use_sqlite = (
-    'test' in sys.argv
-    or 'pytest' in sys.modules
-    or os.environ.get('USE_SQLITE') == '1'
-)
+# Tests always use HireNest's OWN local SQLite file.
+is_test_run = 'test' in sys.argv or 'pytest' in sys.modules
 
-if use_sqlite:
+if is_test_run:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -279,12 +275,23 @@ if use_sqlite:
         }
     }
 elif HIRENEST_DATABASE_URL:
-    # Production: use HireNest's dedicated database only.
+    # An explicitly configured database URL always wins (production). This MUST
+    # take precedence over USE_SQLITE so the deployed app and the migration
+    # command always target the SAME production database. A stray USE_SQLITE=1
+    # must never silently redirect migrations to the local SQLite file.
     DATABASES['default'] = dj_database_url.parse(
         HIRENEST_DATABASE_URL,
         conn_max_age=600,
         conn_health_checks=True,
     )
+elif os.environ.get('USE_SQLITE') == '1':
+    # Local development only (no HIRENEST_DATABASE_URL configured).
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 elif is_production and not os.environ.get('HIRENEST_DB_HOST'):
     # Fail fast instead of silently connecting to TalentVault's database.
     raise ImproperlyConfigured(
