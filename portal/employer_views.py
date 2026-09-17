@@ -40,6 +40,14 @@ from .employer_service import (
     serialize_employer,
     serialize_employer_queryset,
 )
+from .job_service import (
+    apply_admin_job_action,
+    create_admin_job,
+    get_admin_jobs_queryset,
+    serialize_job,
+    serialize_job_queryset,
+    update_admin_job,
+)
 
 
 EMPLOYER_ROLES = (User.Role.RECRUITER, User.Role.COMPANY_ADMIN)
@@ -115,7 +123,11 @@ class HirenestEmployerDashboardView(HirenestEmployerRequiredMixin, View):
 
     def get(self, request):
         company = _get_company_for_user(request.user)
-        jobs = Job.objects.filter(company=company) if company else Job.objects.none()
+        jobs = (
+            Job.objects.filter(company=company, source=Job.JobSource.EMPLOYER)
+            if company
+            else Job.objects.none()
+        )
 
         applications = (
             Application.objects.filter(job__company=company)
@@ -147,7 +159,9 @@ class HirenestEmployerJobsView(HirenestEmployerRequiredMixin, ListView):
         company = _get_company_for_user(self.request.user)
         if not company:
             return Job.objects.none()
-        return Job.objects.filter(company=company).order_by('-created_at')
+        return Job.objects.filter(
+            company=company, source=Job.JobSource.EMPLOYER
+        ).order_by('-created_at')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -175,6 +189,8 @@ class HirenestEmployerJobCreateView(HirenestEmployerRequiredMixin, View):
             job = form.save(commit=False)
             job.company = company
             job.currency = 'AUD'
+            # External employers always own their own postings.
+            job.source = Job.JobSource.EMPLOYER
             job.created_by = request.user
             job.updated_by = request.user
             job.save()
@@ -365,3 +381,109 @@ class HirenestEmployerApprovalsAPIView(View):
             'message': message,
             'employer': serialize_employer(target),
         })
+
+
+# ==============================================================================
+# SECURE SERVER-TO-SERVER ADMIN JOBS API (TalentVault Admin Portal integration)
+# ==============================================================================
+def _parse_json_body(request):
+    """Best-effort JSON (or form) body parsing for the admin jobs API."""
+    if request.body:
+        try:
+            return json.loads(request.body.decode('utf-8'))
+        except (ValueError, UnicodeDecodeError):
+            return {}
+    return request.POST.dict()
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class HirenestAdminJobsAPIView(View):
+    """
+    Secure JSON API for HireNest admin-owned job postings.
+
+    Only postings with ``source=ADMIN`` can be read or changed here, so admin
+    management never touches an external employer's postings.
+
+    GET    /api/admin/jobs/?status=ACTIVE   -> list admin jobs
+    GET    /api/admin/jobs/<uuid>/          -> admin job detail
+    POST   /api/admin/jobs/                 -> create an admin job
+    POST   /api/admin/jobs/<uuid>/          -> lifecycle action (publish/pause/...)
+    PUT    /api/admin/jobs/<uuid>/          -> update an admin job
+    DELETE /api/admin/jobs/<uuid>/          -> delete an admin job
+    """
+
+    def _forbidden(self):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    def get(self, request, job_id=None):
+        if not _is_hirenest_admin(request):
+            return self._forbidden()
+
+        if job_id is not None:
+            job = get_object_or_404(get_admin_jobs_queryset(), pk=job_id)
+            return JsonResponse({'source': 'hirenest', 'job': serialize_job(job)})
+
+        status_filter = request.GET.get('status', 'ALL').upper()
+        jobs = get_admin_jobs_queryset(status_filter)
+        return JsonResponse({
+            'source': 'hirenest',
+            'status_filter': status_filter,
+            'count': jobs.count(),
+            'jobs': serialize_job_queryset(jobs),
+        })
+
+    def post(self, request, job_id=None):
+        if not _is_hirenest_admin(request):
+            return self._forbidden()
+
+        payload = _parse_json_body(request)
+
+        if job_id is not None:
+            job = get_object_or_404(get_admin_jobs_queryset(), pk=job_id)
+            ok, message = apply_admin_job_action(job, payload.get('action'))
+            if not ok:
+                return JsonResponse({'error': message}, status=400)
+            return JsonResponse({'status': 'ok', 'message': message, 'job': serialize_job(job)})
+
+        job, errors = create_admin_job(payload)
+        if errors:
+            return JsonResponse({'error': ' '.join(errors), 'errors': errors}, status=400)
+        return JsonResponse({
+            'status': 'ok',
+            'message': f"Job '{job.title}' posted to HireNest Australia.",
+            'job': serialize_job(job),
+        }, status=201)
+
+    def put(self, request, job_id=None):
+        return self._update(request, job_id)
+
+    def patch(self, request, job_id=None):
+        return self._update(request, job_id)
+
+    def _update(self, request, job_id):
+        if not _is_hirenest_admin(request):
+            return self._forbidden()
+        if job_id is None:
+            return JsonResponse({'error': 'job_id is required.'}, status=400)
+
+        job = get_object_or_404(get_admin_jobs_queryset(), pk=job_id)
+        payload = _parse_json_body(request)
+        job, errors = update_admin_job(job, payload)
+        if errors:
+            return JsonResponse({'error': ' '.join(errors), 'errors': errors}, status=400)
+        return JsonResponse({
+            'status': 'ok',
+            'message': f"Job '{job.title}' updated.",
+            'job': serialize_job(job),
+        })
+
+    def delete(self, request, job_id=None):
+        if not _is_hirenest_admin(request):
+            return self._forbidden()
+        if job_id is None:
+            return JsonResponse({'error': 'job_id is required.'}, status=400)
+
+        job = get_object_or_404(get_admin_jobs_queryset(), pk=job_id)
+        title = job.title
+        job.delete()
+        return JsonResponse({'status': 'ok', 'message': f"Job '{title}' deleted."})

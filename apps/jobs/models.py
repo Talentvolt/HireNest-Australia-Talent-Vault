@@ -16,6 +16,18 @@ class Job(BaseAppModel):
         ON_HOLD = "ON_HOLD", _("On Hold")
         CLOSED = "CLOSED", _("Closed")
 
+    class JobSource(models.TextChoices):
+        """
+        Ownership of a HireNest job posting.
+
+        ADMIN jobs are created by the TalentVault Admin Portal through the
+        secure server-to-server admin API. EMPLOYER jobs are created by an
+        external employer through the HireNest employer workspace. The two
+        ownership types are never mixed.
+        """
+        ADMIN = "ADMIN", _("HireNest Admin")
+        EMPLOYER = "EMPLOYER", _("External Employer")
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='jobs')
     client = models.ForeignKey('clients.Client', on_delete=models.SET_NULL, null=True, blank=True, related_name='jobs')
     title = models.CharField(max_length=255, db_index=True)
@@ -59,6 +71,14 @@ class Job(BaseAppModel):
         choices=JobStatus.choices, 
         default=JobStatus.DRAFT,
         db_index=True
+    )
+
+    source = models.CharField(
+        max_length=20,
+        choices=JobSource.choices,
+        default=JobSource.EMPLOYER,
+        db_index=True,
+        help_text="Who owns this posting: the HireNest admin or an external employer.",
     )
     
     is_remote = models.BooleanField(default=False)
@@ -135,6 +155,11 @@ class Job(BaseAppModel):
                 else:
                     return f"Up to ${self.max_salary:.2f} / hr"
         return self.salary_range_lpa
+
+    @property
+    def is_admin_posted(self):
+        """True when the posting is owned by the HireNest admin (not an employer)."""
+        return self.source == self.JobSource.ADMIN
 
     @property
     def display_company(self):
