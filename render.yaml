@@ -10,7 +10,13 @@ services:
     name: hirenest-australia
     runtime: python
     plan: starter
-    buildCommand: ./build.sh
+    # Run build.sh via bash: the script is committed as mode 100644, so a bare
+    # "./build.sh" is not executable and the build (including migrations) would
+    # not run.
+    buildCommand: bash build.sh
+    # Apply migrations against the production database on every deploy, before
+    # the new version starts receiving traffic.
+    preDeployCommand: python manage.py migrate --noinput
     startCommand: gunicorn config.wsgi:application
     envVars:
       - key: PYTHON_VERSION
