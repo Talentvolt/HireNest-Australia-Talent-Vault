@@ -1509,3 +1509,329 @@ body.hirenest-body {
   color: var(--hn-blue) !important;
 }
 
+/* ==========================================================================
+   MOBILE RESPONSIVE OPTIMIZATION — Android + iOS
+   --------------------------------------------------------------------------
+   Appended after the base design system so these rules win on small screens.
+   Desktop / laptop layouts (>= 992px) are intentionally left unchanged.
+   ========================================================================== */
+
+/* 1. Global viewport, overflow & media safety ------------------------------- */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body.hirenest-body {
+  /* Prevent horizontal overflow site-wide. `clip` does not create a scroll
+     container, so the sticky navbar keeps working; `hidden` is the fallback. */
+  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-wrap: break-word;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Low-specificity element rules so component classes (e.g. .hn-city-img,
+   .hn-navbar-logo) keep full control of their own dimensions. */
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* iOS / Android notch, rounded corners & home-indicator safe areas */
+.hn-navbar-inner {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.hn-footer {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.hn-mobile-header {
+  padding-left: calc(1.25rem + env(safe-area-inset-left));
+  padding-right: calc(1.25rem + env(safe-area-inset-right));
+}
+
+.hn-mobile-body {
+  padding-left: calc(1.25rem + env(safe-area-inset-left));
+  padding-right: calc(1.25rem + env(safe-area-inset-right));
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+}
+
+/* 2. Touch-friendly controls ------------------------------------------------ */
+.hn-mobile-toggle,
+.hn-mobile-close {
+  width: 44px;
+  height: 44px;
+}
+
+/* 3. Tablets & phones (<= 991px) ------------------------------------------- */
+@media (max-width: 991.98px) {
+  .hn-hero-section,
+  .hn-employer-hero {
+    min-height: auto;
+  }
+
+  .hn-recruiter-card {
+    margin-top: 0.5rem;
+  }
+
+  /* Comfortable tap targets for every non-compact button */
+  body.hirenest-body .btn:not(.btn-sm):not(.btn-link) {
+    min-height: 44px;
+  }
+  body.hirenest-body .btn-sm {
+    min-height: 36px;
+  }
+}
+
+/* 4. Phones (<= 767px) ------------------------------------------------------ */
+@media (max-width: 767.98px) {
+  /* Inputs must be >= 16px to stop iOS Safari auto-zooming on focus */
+  body.hirenest-body input,
+  body.hirenest-body select,
+  body.hirenest-body textarea,
+  .hn-form-control,
+  .hn-search-input {
+    font-size: 16px;
+  }
+
+  .hn-btn-primary,
+  .hn-btn-outline,
+  .hn-search-btn {
+    min-height: 44px;
+  }
+
+  .hn-form-control {
+    min-height: 46px;
+  }
+
+  /* Hero copy wraps instead of overflowing */
+  .hn-hero-badge,
+  .hn-employer-badge {
+    flex-wrap: wrap;
+    white-space: normal;
+    max-width: 100%;
+    line-height: 1.35;
+  }
+
+  .hn-hero-subtitle,
+  .hn-employer-hero-subtitle {
+    font-size: 1.02rem;
+    line-height: 1.6;
+  }
+
+  /* Cards */
+  .hn-category-card {
+    padding: 1.1rem;
+  }
+
+  .hn-job-card {
+    padding: 1.15rem;
+  }
+
+  .hn-job-card-title {
+    font-size: 1.06rem;
+  }
+
+  .hn-job-meta-row {
+    gap: 0.5rem;
+    font-size: 0.82rem;
+  }
+
+  .hn-job-footer {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .hn-job-footer > div {
+    width: 100%;
+  }
+
+  .hn-job-footer > div .btn {
+    flex: 1 1 0;
+  }
+
+  /* Detail pages */
+  .hn-detail-header-card,
+  .hn-detail-body-card {
+    padding: 1.25rem;
+  }
+
+  .hn-detail-sidebar-card {
+    padding: 1.15rem;
+  }
+
+  .hn-detail-header-card .d-flex.justify-content-between.align-items-start {
+    flex-wrap: wrap;
+  }
+
+  /* Auth pages */
+  .hn-auth-wrapper {
+    padding: 1.5rem 1rem;
+    min-height: auto;
+  }
+
+  .hn-auth-card {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .hn-auth-title {
+    font-size: 1.45rem;
+  }
+
+  /* Onboarding wizard */
+  .hn-onboarding-head {
+    padding: 1.25rem 1.25rem 1rem;
+  }
+
+  .hn-onboarding-body {
+    padding: 1.25rem 1.25rem 1.5rem;
+  }
+
+  .hn-upload-zone {
+    padding: 1.1rem;
+  }
+
+  /* Footer */
+  .hn-footer {
+    padding-top: 2.75rem;
+    padding-bottom: 1.75rem;
+  }
+
+  .hn-footer-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    text-align: left;
+  }
+
+  /* Tables scroll inside their wrapper instead of breaking the page */
+  .table-responsive {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 5. Small phones (<= 575px, incl. 320 / 360 / 375 / 390 / 414) ------------- */
+@media (max-width: 575.98px) {
+  .hn-navbar-inner {
+    min-height: 56px;
+    gap: 0.5rem;
+  }
+
+  .hn-navbar-logo {
+    height: 34px;
+    max-width: 140px;
+  }
+
+  .hn-mobile-logo {
+    height: 30px;
+    max-width: 140px;
+  }
+
+  .hn-hero-section {
+    padding: 3rem 0 2.75rem 0;
+  }
+
+  .hn-employer-hero {
+    padding: 3rem 0 2.75rem 0;
+  }
+
+  .hn-hero-title,
+  .hn-employer-hero-title {
+    font-size: 1.9rem;
+    letter-spacing: -0.02em;
+  }
+
+  .hn-search-card {
+    padding: 0.6rem;
+    border-radius: 14px;
+  }
+
+  .hn-search-btn {
+    padding: 0.8rem 1rem;
+    font-size: 0.98rem;
+  }
+
+  .hn-chip {
+    font-size: 0.78rem;
+    padding: 0.3rem 0.7rem;
+  }
+
+  .hn-chip-label {
+    width: 100%;
+  }
+
+  .hn-city-card {
+    height: 190px;
+  }
+
+  .hn-city-name {
+    font-size: 1.2rem;
+  }
+
+  .hn-recruiter-card {
+    padding: 1.1rem;
+  }
+
+  .hn-stat-card {
+    padding: 1.35rem 1rem;
+  }
+
+  .hn-employer-trust-item {
+    font-size: 0.84rem;
+  }
+}
+
+/* 6. Very small phones (<= 360px, e.g. 320px) ------------------------------- */
+@media (max-width: 360px) {
+  .hn-navbar-logo {
+    height: 30px;
+    max-width: 118px;
+  }
+
+  .hn-hero-title,
+  .hn-employer-hero-title {
+    font-size: 1.7rem;
+  }
+
+  .hn-hero-badge,
+  .hn-employer-badge {
+    font-size: 0.76rem;
+    padding: 0.35rem 0.7rem;
+  }
+
+  .hn-city-card {
+    height: 170px;
+  }
+
+  .hn-category-card,
+  .hn-job-card {
+    padding: 1rem;
+  }
+
+  .hn-btn-employer-primary,
+  .hn-btn-employer-secondary {
+    padding: 0.75rem 1rem;
+    font-size: 0.92rem;
+  }
+}
+
+/* 7. Landscape phones (short viewports) ------------------------------------ */
+@media (max-height: 480px) and (orientation: landscape) {
+  .hn-hero-section,
+  .hn-employer-hero {
+    padding: 2rem 0 2rem 0;
+  }
+
+  .hn-hero-title,
+  .hn-employer-hero-title {
+    font-size: 1.8rem;
+  }
+}
+
