@@ -12,7 +12,7 @@
                 <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" style="height: 48px; width: auto; object-fit: contain;">
             </a>
             <h1 class="hn-auth-title">Register Employer Account</h1>
-            <p class="hn-auth-subtitle">Create your Australian organization account on HireNest. New employer accounts are reviewed and approved before workspace access is granted.</p>
+            <p class="hn-auth-subtitle">Create your Australian organisation account on HireNest. New employer accounts are reviewed and approved before workspace access is granted.</p>
         </div>
 
         {% if errors %}
@@ -29,11 +29,11 @@
         <form method="POST" action="/employers/register/">
             {% csrf_token %}
 
-            <h4 class="fs-6 fw-bold text-secondary text-uppercase mb-3 letter-spacing-1">1. Organization Details</h4>
+            <h4 class="fs-6 fw-bold text-secondary text-uppercase mb-3 letter-spacing-1">1. Organisation Details</h4>
 
-            <!-- Organization Name -->
+            <!-- Organisation Name -->
             <div class="mb-3">
-                <label class="hn-form-label">Organization / Company Name <span class="text-danger">*</span></label>
+                <label class="hn-form-label">Organisation / Company Name <span class="text-danger">*</span></label>
                 <input type="text" name="org_name" class="form-control hn-form-control" value="{{ org_name|default:'' }}" placeholder="e.g. Canva Australia Pty Ltd" required>
             </div>
 
@@ -99,7 +99,7 @@
             <div class="form-check mb-4">
                 <input class="form-check-input" type="checkbox" id="termsCheck" name="terms" required checked>
                 <label class="form-check-label small text-muted" for="termsCheck">
-                    I agree to the <a href="/resources/" class="text-primary text-decoration-none">Employer Terms</a> & <a href="/resources/" class="text-primary text-decoration-none">Fair Work Compliance Policy</a>
+                    I agree to the <a href="/resources/" class="text-primary text-decoration-none">Employer Terms</a> &amp; <a href="/resources/" class="text-primary text-decoration-none">Workplace Guidelines</a>
                 </label>
             </div>
 

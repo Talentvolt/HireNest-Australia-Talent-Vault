@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}HireNest Australia | Find Jobs & Build Your Future{% endblock %}
-{% block meta_description %}Discover thousands of job opportunities across Sydney, Melbourne, Brisbane, Perth, Adelaide, and regional hubs. Apply directly to verified Australian companies on HireNest.{% endblock %}
+{% block meta_description %}Explore job opportunities across Sydney, Melbourne, Brisbane, Perth, Adelaide and regional Australia. Apply directly to Australian employers on HireNest.{% endblock %}
 
 {% block content %}
 <!-- ==========================================================================
@@ -18,7 +18,7 @@
                 
                 <div class="hn-hero-badge mb-3">
                     <i class="bi bi-geo-alt-fill text-danger"></i>
-                    <span>Australia's Dedicated Employment Network • 100% Verified Local Roles</span>
+                    <span>Australia-focused job opportunities • Roles across all states and territories</span>
                 </div>
 
                 <h1 class="hn-hero-title">
@@ -27,7 +27,7 @@
                 </h1>
 
                 <p class="hn-hero-subtitle">
-                    Discover thousands of opportunities with Australia's growing companies across Sydney, Melbourne, Brisbane, Perth, Adelaide, and regional hubs.
+                    Explore job opportunities across Australia and discover roles that match your skills, experience and career goals.
                 </p>
 
                 <!-- Search Component -->
@@ -108,50 +108,44 @@
                             <span class="fw-bold text-dark" style="font-size: 0.95rem;">Career Match Hub</span>
                         </div>
                         <span class="hn-active-match-badge">
-                            <span class="hn-live-dot"></span>Live Matching
+                            <span class="hn-live-dot"></span>Job Search
                         </span>
                     </div>
 
-                    <!-- Match 1: Senior Python Backend Engineer -->
+                    <!-- Explore 1: Technology -->
                     <div class="hn-match-item">
                         <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="hn-match-title">Senior Python Backend Engineer</span>
-                            <span class="badge bg-primary text-white fw-bold px-2 py-1" style="font-size: 0.72rem; border-radius: 6px;">98% Match</span>
+                            <span class="hn-match-title">Software &amp; Technology</span>
+                            <span class="badge bg-primary text-white fw-bold px-2 py-1" style="font-size: 0.72rem; border-radius: 6px;">Explore</span>
                         </div>
                         <div class="hn-match-candidate">
-                            Atlassian Australia • $150k - $190k • Sydney NSW
-                        </div>
-                        <div class="hn-match-progress-wrap">
-                            <div class="hn-match-progress-bar bg-primary" style="width: 98%;"></div>
+                            Browse developer, cloud and data roles across Australia
                         </div>
                     </div>
 
-                    <!-- Match 2: Lead Financial Analyst -->
+                    <!-- Explore 2: Accounting & Finance -->
                     <div class="hn-match-item">
                         <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="hn-match-title">Lead Financial Analyst (Melbourne)</span>
-                            <span class="badge bg-success text-white fw-bold px-2 py-1" style="font-size: 0.72rem; border-radius: 6px;">94% Match</span>
+                            <span class="hn-match-title">Accounting &amp; Finance</span>
+                            <span class="badge bg-success text-white fw-bold px-2 py-1" style="font-size: 0.72rem; border-radius: 6px;">Explore</span>
                         </div>
                         <div class="hn-match-candidate">
-                            Macquarie Group • $135k - $160k • Hybrid VIC
-                        </div>
-                        <div class="hn-match-progress-wrap">
-                            <div class="hn-match-progress-bar bg-success" style="width: 94%;"></div>
+                            Discover finance and accounting opportunities in major cities
                         </div>
                     </div>
 
                     <!-- Card Action Button -->
                     <div class="mt-3">
                         <a href="/jobs/" class="btn hn-btn-primary w-100 fw-bold justify-content-center py-2.5" style="border-radius: 10px; font-size: 0.92rem;">
-                            <span>Explore All {{ total_active_jobs|default:"500" }}+ Active Jobs</span>
+                            <span>{% if total_active_jobs %}Browse All {{ total_active_jobs }} Job{{ total_active_jobs|pluralize }}{% else %}Browse Jobs Across Australia{% endif %}</span>
                             <i class="bi bi-arrow-right ms-1"></i>
                         </a>
                     </div>
 
                     <!-- Card Live Metadata Subtitle -->
                     <div class="d-flex align-items-center justify-content-between text-muted mt-2.5 pt-2 border-top" style="font-size: 0.72rem;">
-                        <span><i class="bi bi-shield-check text-success me-1"></i>100% Verified Australian Roles</span>
-                        <span>NES & Fair Work Compliant</span>
+                        <span><i class="bi bi-briefcase text-success me-1"></i>Australian job opportunities</span>
+                        <span>Roles across all states</span>
                     </div>
 
                 </div>
@@ -187,7 +181,7 @@
                             <span class="badge bg-light text-primary border fw-semibold small">{{ cat.badge }}</span>
                         </div>
                         <h3 class="hn-category-name">{{ cat.name }}</h3>
-                        <div class="hn-category-count mt-auto">{{ cat.live_count }} Active Roles</div>
+                        <div class="hn-category-count mt-auto">Explore opportunities</div>
                     </a>
                 </div>
             {% endfor %}
@@ -218,7 +212,7 @@
                         <div class="hn-city-overlay">
                             <h3 class="hn-city-name">{{ city.name }}, {{ city.state }}</h3>
                             <div class="small opacity-90 mb-1">{{ city.description }}</div>
-                            <span class="hn-city-badge"><i class="bi bi-briefcase me-1"></i>{{ city.live_count }}</span>
+                            <span class="hn-city-badge"><i class="bi bi-briefcase me-1"></i>{% if city.live_count %}{{ city.live_count }} jobs{% else %}Explore jobs{% endif %}</span>
                         </div>
                     </a>
                 </div>
@@ -249,7 +243,7 @@
                     </div>
                     <h3 class="fw-bold fs-5 text-dark mb-2">Quality Jobs</h3>
                     <p class="text-muted small leading-relaxed mb-0">
-                        Verified job listings from trusted Australian employers, adhering to National Employment Standards.
+                        Job listings from Australian employers and recruitment agencies across the country.
                     </p>
                 </div>
             </div>
@@ -288,7 +282,7 @@
                     </div>
                     <h3 class="fw-bold fs-5 text-dark mb-2">Career Support</h3>
                     <p class="text-muted small leading-relaxed mb-0">
-                        Access Australian salary benchmarks, ATS resume templates, and Fair Work workplace rights advice.
+                        Access Australian salary benchmarks, resume templates and workplace rights information.
                     </p>
                 </div>
             </div>
@@ -305,11 +299,11 @@
     <div class="container-xl">
         <div class="d-flex flex-wrap align-items-end justify-content-between mb-4">
             <div>
-                <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Verified Vacancies</span>
+                <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Featured Roles</span>
                 <h2 class="fs-2 fw-bold text-dark mb-1">Featured Jobs in Australia</h2>
-                <p class="text-muted mb-0">Apply directly to high-priority opportunities across the country.</p>
+                <p class="text-muted mb-0">Apply directly to opportunities across the country.</p>
             </div>
-            <a href="/jobs/" class="btn hn-btn-primary mt-2 mt-sm-0">Browse All {{ total_active_jobs }} Jobs <i class="bi bi-arrow-right ms-1"></i></a>
+            <a href="/jobs/" class="btn hn-btn-primary mt-2 mt-sm-0">{% if total_active_jobs %}Browse All {{ total_active_jobs }} Job{{ total_active_jobs|pluralize }}{% else %}Browse All Jobs{% endif %} <i class="bi bi-arrow-right ms-1"></i></a>
         </div>
 
         <div class="row g-3">
@@ -395,7 +389,7 @@
             <div>
                 <span class="text-primary fw-bold text-uppercase small letter-spacing-1">Top Employers</span>
                 <h2 class="fs-2 fw-bold text-dark mb-1">Popular Employers in Australia</h2>
-                <p class="text-muted mb-0">Explore career paths with Australia's most recognized organizations.</p>
+                <p class="text-muted mb-0">Explore career paths with organisations hiring across Australia.</p>
             </div>
             <a href="/companies/" class="btn hn-btn-outline mt-2 mt-sm-0">View All Companies <i class="bi bi-arrow-right ms-1"></i></a>
         </div>
@@ -465,7 +459,7 @@
             <div class="col-lg-8">
                 <span class="badge bg-primary text-white px-3 py-1.5 mb-2 fw-bold">Australian Employers & Recruiters</span>
                 <h2 class="fs-1 fw-bold text-white mb-2">Looking to Hire Top Australian Talent?</h2>
-                <p class="text-secondary fs-5 mb-0">Post jobs, access our pre-screened candidate database, and streamline hiring with AI intelligence and enterprise ATS workflows.</p>
+                <p class="text-secondary fs-5 mb-0">Post jobs, search candidate profiles and manage your hiring process in one place.</p>
             </div>
             <div class="col-lg-4 text-lg-end">
                 <a href="/employers/" class="btn btn-primary btn-lg fw-bold px-4 py-2.5 me-2">For Employers</a>

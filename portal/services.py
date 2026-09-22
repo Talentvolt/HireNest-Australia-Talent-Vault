@@ -57,7 +57,7 @@ POPULAR_CITIES = [
     {
         "name": "Adelaide",
         "state": "SA",
-        "image_url": "https://images.unsplash.com/photo-1548567117-02324f0c7fc5?w=600&auto=format&fit=crop&q=80",
+        "image_url": "https://images.unsplash.com/photo-1656177128839-19fccb6307d3?w=600&auto=format&fit=crop&q=80&fm=jpg",
         "description": "Defense, aerospace & wine tech centre",
         "query": "Adelaide SA",
     },
@@ -122,7 +122,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "IT & Software Development",
         "icon": "bi-code-slash",
         "badge": "Top Remuneration",
-        "roles_count": "3,150+",
         "popular_roles": ["Software Engineer", "Frontend Developer", "DevOps Engineer", "Cloud Architect", "Data Engineer", "Python Developer"]
     },
     {
@@ -130,7 +129,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Healthcare & Medical",
         "icon": "bi-heart-pulse-fill",
         "badge": "High Demand",
-        "roles_count": "2,400+",
         "popular_roles": ["Registered Nurse", "Clinical Specialist", "Physiotherapist", "General Practitioner", "Occupational Therapist", "Aged Care"]
     },
     {
@@ -138,7 +136,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Accounting & Finance",
         "icon": "bi-cash-coin",
         "badge": "Essential",
-        "roles_count": "1,650+",
         "popular_roles": ["Financial Accountant (CPA)", "Management Accountant", "Financial Analyst", "Payroll Officer", "Audit Senior"]
     },
     {
@@ -146,7 +143,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Engineering",
         "icon": "bi-gear-wide-connected",
         "badge": "Critical Skill",
-        "roles_count": "1,310+",
         "popular_roles": ["Civil Engineer", "Project Engineer", "Mechanical Engineer", "Electrical Engineer", "Structural Engineer"]
     },
     {
@@ -154,7 +150,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Construction & Trades",
         "icon": "bi-tools",
         "badge": "Booming Sector",
-        "roles_count": "1,890+",
         "popular_roles": ["Site Supervisor", "Licensed Electrician", "Carpenter", "Plumber", "HVAC Technician", "Construction Manager"]
     },
     {
@@ -162,7 +157,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Sales & Customer Service",
         "icon": "bi-graph-up-arrow",
         "badge": "Competitive",
-        "roles_count": "1,420+",
         "popular_roles": ["Account Executive", "Business Development Manager", "Customer Success Specialist", "Sales Representative"]
     },
     {
@@ -170,7 +164,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Education & Training",
         "icon": "bi-mortarboard-fill",
         "badge": "Growing Demand",
-        "roles_count": "1,240+",
         "popular_roles": ["Secondary Teacher", "Primary Teacher", "Early Childhood Educator", "Vocational Trainer", "Lecturer"]
     },
     {
@@ -178,7 +171,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Mining, Energy & Resources",
         "icon": "bi-gem",
         "badge": "Top Earning",
-        "roles_count": "870+",
         "popular_roles": ["Mining Engineer", "Geologist", "Plant Operator", "Health & Safety (WHS)", "Operations Supervisor"]
     },
     {
@@ -186,7 +178,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Administration & Office Support",
         "icon": "bi-folder2-open",
         "badge": "Immediate Start",
-        "roles_count": "1,120+",
         "popular_roles": ["Executive Assistant", "Office Manager", "Receptionist", "Operations Coordinator", "Data Entry"]
     },
     {
@@ -194,7 +185,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Marketing & Communications",
         "icon": "bi-megaphone-fill",
         "badge": "Creative",
-        "roles_count": "790+",
         "popular_roles": ["Digital Marketing Specialist", "Content Strategist", "SEO/SEM Manager", "Brand Manager", "Social Media Manager"]
     },
     {
@@ -202,7 +192,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Hospitality & Tourism",
         "icon": "bi-cup-hot-fill",
         "badge": "Expanding",
-        "roles_count": "980+",
         "popular_roles": ["Head Chef", "Restaurant Manager", "Duty Manager", "Barista", "Event Coordinator"]
     },
     {
@@ -210,7 +199,6 @@ AUSTRALIAN_CLASSIFICATIONS = [
         "name": "Human Resources & Recruitment",
         "icon": "bi-people-fill",
         "badge": "Steady Growth",
-        "roles_count": "640+",
         "popular_roles": ["HR Business Partner", "Talent Acquisition Specialist", "People & Culture Lead", "Recruitment Consultant"]
     },
 ]
@@ -461,7 +449,7 @@ AU_CAREER_ARTICLES = [
         "category": "Resume Writing",
         "read_time": "5 min read",
         "icon": "bi-file-earmark-person-fill",
-        "summary": "Australian hiring managers prioritize reverse-chronological resumes without photos or marital status. Focus on measurable achievements, key competencies, and Australian residency or visa working rights.",
+        "summary": "Australian hiring managers prioritise reverse-chronological resumes without photos or marital status. Focus on measurable achievements, key competencies, and Australian residency or visa working rights.",
         "highlights": [
             "Keep resumes between 2 to 3 pages maximum",
             "State your Australian working rights clearly (Citizen, PR, TSS 482)",
@@ -469,12 +457,12 @@ AU_CAREER_ARTICLES = [
         ]
     },
     {
-        "title": "Nailing Behavioral Interviews with the STAR Technique",
+        "title": "Nailing Behavioural Interviews with the STAR Technique",
         "slug": "star-interview-technique-australia",
         "category": "Interview Preparation",
         "read_time": "6 min read",
         "icon": "bi-chat-quote-fill",
-        "summary": "Australian employers frequently evaluate candidates using behavioral questions. Learn how to structure your answers using Situation, Task, Action, and Result to showcase your problem-solving impact.",
+        "summary": "Australian employers frequently evaluate candidates using behavioural questions. Learn how to structure your answers using Situation, Task, Action and Result to showcase your problem-solving impact.",
         "highlights": [
             "Situation: Set the context and challenge concisely",
             "Task: Clarify your specific responsibility",
@@ -483,12 +471,12 @@ AU_CAREER_ARTICLES = [
         ]
     },
     {
-        "title": "Understanding Fair Work Rights & Superannuation (11.5%)",
+        "title": "Understanding Fair Work Rights & Superannuation",
         "slug": "fair-work-superannuation-rights",
         "category": "Workplace Rights",
         "read_time": "4 min read",
         "icon": "bi-shield-check",
-        "summary": "Understand your legal entitlements under the National Employment Standards (NES), compulsory employer superannuation contributions (currently 11.5% and moving to 12%), overtime rules, and leave entitlements.",
+        "summary": "Understand your entitlements under the National Employment Standards (NES), compulsory employer superannuation contributions, overtime rules and leave entitlements. Always check the Fair Work Ombudsman for current rates and thresholds.",
         "highlights": [
             "Compulsory Superannuation Guarantee (SG) paid on top of OTE",
             "4 weeks annual leave for standard full-time employees",
@@ -516,7 +504,7 @@ AU_RESOURCES = [
         "category": "Resume Templates",
         "badge": "Word & PDF",
         "icon": "bi-file-earmark-word-fill",
-        "description": "Clean, two-column and single-column ATS-friendly templates optimized for Australian recruiters and recruitment software.",
+        "description": "Clean, two-column and single-column ATS-friendly templates optimised for Australian recruiters and recruitment software.",
     },
     {
         "title": "Australian Cover Letter Framework",

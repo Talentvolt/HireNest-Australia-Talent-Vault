@@ -68,7 +68,7 @@ class HirenestLandingView(View):
                 Q(company__industry__icontains=cat['name'].split('&')[0].strip())
             ).count()
             cat_copy = dict(cat)
-            cat_copy['live_count'] = count if count > 0 else cat['roles_count']
+            cat_copy['live_count'] = count
             classifications_with_counts.append(cat_copy)
 
         # Compute dynamic job counts per city
@@ -79,7 +79,7 @@ class HirenestLandingView(View):
                 Q(location__icontains=city['state'])
             ).count()
             city_copy = dict(city)
-            city_copy['live_count'] = f"{c_count} jobs" if c_count > 0 else "500+ jobs"
+            city_copy['live_count'] = c_count
             cities_with_counts.append(city_copy)
 
         # Candidate personalized recommendations if authenticated

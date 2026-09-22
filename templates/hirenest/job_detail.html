@@ -64,7 +64,7 @@
                             <div class="fw-bold text-dark"><i class="bi bi-geo-alt-fill text-danger me-1"></i>{{ job.location }}</div>
                         </div>
                         <div class="col-sm-4 col-6">
-                            <div class="text-muted small">Salary Benchmark</div>
+                            <div class="text-muted small">Annual Salary (AUD)</div>
                             <div class="fw-bold text-success">{{ job.formatted_salary_display }}</div>
                         </div>
                         <div class="col-sm-4 col-12">
@@ -190,7 +190,7 @@
                     </div>
 
                     <p class="text-muted small mb-3">
-                        {{ job.company.description|default:'Leading organization committed to building high-performing teams across Australia.'|truncatewords:30 }}
+                        {{ job.company.description|default:'Australian organisation building high-performing teams across Australia.'|truncatewords:30 }}
                     </p>
 
                     <div class="border-top pt-3 small text-muted">
@@ -201,14 +201,14 @@
                     </div>
                 </div>
 
-                <!-- Australian Hiring Guidelines Notice -->
+                <!-- Salary & Workplace Information Notice -->
                 <div class="hn-detail-sidebar-card bg-light border-0">
                     <div class="d-flex gap-2.5">
-                        <i class="bi bi-shield-check fs-4 text-primary"></i>
+                        <i class="bi bi-info-circle fs-4 text-primary"></i>
                         <div>
-                            <h4 class="fs-6 fw-bold text-dark mb-1">Australian Fair Work Guarantee</h4>
+                            <h4 class="fs-6 fw-bold text-dark mb-1">Salary &amp; Workplace Information</h4>
                             <p class="text-secondary small mb-0">
-                                This role adheres to Australian National Employment Standards (NES) and verified wage benchmarks.
+                                Salary details are provided by the employer. Employers are responsible for entering accurate remuneration information and for complying with applicable Australian workplace requirements.
                             </p>
                         </div>
                     </div>

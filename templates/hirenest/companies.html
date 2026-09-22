@@ -10,7 +10,7 @@
             <div class="col-lg-8">
                 <span class="badge bg-primary-subtle text-primary fw-semibold px-2.5 py-1 mb-2">Employer Directory</span>
                 <h1 class="fs-1 fw-bold text-dark mb-2">Discover Companies in Australia</h1>
-                <p class="text-muted fs-5 mb-4">Explore verified Australian organizations, company cultures, and current job openings.</p>
+                <p class="text-muted fs-5 mb-4">Explore Australian organisations, company cultures and current job openings.</p>
 
                 <!-- Search form -->
                 <form action="/companies/" method="GET">
@@ -53,7 +53,7 @@
                         </p>
 
                         <div class="d-flex align-items-center justify-content-between pt-3 border-top mt-auto">
-                            <span class="badge bg-primary-subtle text-primary">{{ comp.active_jobs_count }} active roles</span>
+                            <span class="badge bg-primary-subtle text-primary">{{ comp.active_jobs_count }} open role{{ comp.active_jobs_count|pluralize }}</span>
                             <a href="/companies/{{ comp.slug }}/" class="btn btn-outline-primary btn-sm fw-semibold">
                                 View Profile & Jobs &rarr;
                             </a>
