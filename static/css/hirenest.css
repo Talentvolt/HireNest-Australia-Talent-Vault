@@ -137,12 +137,22 @@ body.hirenest-body {
   gap: 0.4rem;
 }
 
+/* Mobile-first: the desktop navigation and the desktop action group are
+   hidden until the desktop breakpoint. On mobile the hamburger is the ONLY
+   header control. Using a compound selector keeps this rule independent of
+   the individual .hn-nav-links / .hn-nav-actions display declarations. */
+.hn-nav-links.hn-desktop-only,
+.hn-nav-actions.hn-desktop-only {
+  display: none;
+}
+
 .hn-mobile-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
   border: 1px solid var(--hn-border);
   background-color: #ffffff;
   color: var(--hn-navy);
@@ -222,6 +232,10 @@ body.hirenest-body {
 /* Desktop: show full navigation at >= 992px */
 @media (min-width: 992px) {
   .hn-nav-links {
+    display: flex;
+  }
+  .hn-nav-links.hn-desktop-only,
+  .hn-nav-actions.hn-desktop-only {
     display: flex;
   }
   .hn-nav-actions > .hn-btn-employer,

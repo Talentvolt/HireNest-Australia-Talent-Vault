@@ -48,11 +48,11 @@
 
                 <!-- Brand Logo -->
                 <a href="/" class="hn-logo-wrap" aria-label="HireNest Australia home">
-                    <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-navbar-logo">
+                    <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-navbar-logo" width="150" height="44" decoding="async">
                 </a>
 
-                <!-- Desktop Primary Navigation -->
-                <nav class="hn-nav-links" aria-label="Primary navigation">
+                <!-- Desktop Primary Navigation (hidden on mobile) -->
+                <nav class="hn-nav-links hn-desktop-only" aria-label="Primary navigation">
                     <a href="/jobs/" class="hn-nav-link {% if request.path == '/jobs/' or '/jobs/' in request.path and '/employers' not in request.path %}active{% endif %}">Find Jobs</a>
                     <a href="/companies/" class="hn-nav-link {% if '/companies' in request.path %}active{% endif %}">Companies</a>
                     <a href="/career-advice/" class="hn-nav-link {% if '/career-advice' in request.path %}active{% endif %}">Career Advice</a>
@@ -60,8 +60,8 @@
                     <a href="/resources/" class="hn-nav-link {% if '/resources' in request.path %}active{% endif %}">Resources</a>
                 </nav>
 
-                <!-- Right Actions / User Navigation (role-aware) -->
-                <div class="hn-nav-actions">
+                <!-- Desktop Actions / User Navigation (role-aware, hidden on mobile) -->
+                <div class="hn-nav-actions hn-desktop-only">
 
                     {% if nav_role == 'ANONYMOUS' %}
                         <!-- Anonymous: employer CTA + candidate auth entry -->
@@ -109,11 +109,12 @@
                         </div>
                     {% endif %}
 
-                    <!-- Mobile Menu Toggler -->
-                    <button class="hn-mobile-toggle" type="button" data-bs-toggle="offcanvas" data-bs-target="#hnMobileMenu" aria-controls="hnMobileMenu" aria-expanded="false" aria-label="Open navigation menu">
-                        <i class="bi bi-list" aria-hidden="true"></i>
-                    </button>
                 </div>
+
+                <!-- Mobile Menu Toggler (mobile only) -->
+                <button class="hn-mobile-toggle" type="button" data-bs-toggle="offcanvas" data-bs-target="#hnMobileMenu" aria-controls="hnMobileMenu" aria-expanded="false" aria-label="Open navigation menu">
+                    <i class="bi bi-list" aria-hidden="true"></i>
+                </button>
 
             </div>
         </div>
@@ -123,7 +124,7 @@
     <div class="offcanvas offcanvas-end hn-mobile-menu" tabindex="-1" id="hnMobileMenu" aria-labelledby="hnMobileMenuLabel">
         <div class="offcanvas-header hn-mobile-header">
             <a href="/" class="text-decoration-none" aria-label="HireNest Australia home">
-                <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-mobile-logo">
+                <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-mobile-logo" width="130" height="38" decoding="async">
             </a>
             <button type="button" class="hn-mobile-close" data-bs-dismiss="offcanvas" aria-label="Close navigation menu">
                 <i class="bi bi-x-lg" aria-hidden="true"></i>
