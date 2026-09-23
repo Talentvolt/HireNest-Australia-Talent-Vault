@@ -37,6 +37,60 @@
 
     <!-- HireNest Australia Custom Design System -->
     <link rel="stylesheet" href="{% static 'css/hirenest.css' %}">
+
+    <!-- Critical mobile header + drawer CSS.
+         Inlined so the mobile header (logo + hamburger ONLY) and the vertical
+         drawer render correctly even if the hashed external stylesheet is
+         cached or has not yet been re-collected on deploy. Scoped to
+         max-width: 991.98px, so desktop (>= 992px) is never affected. -->
+    <style>
+      @media (max-width: 991.98px) {
+        /* 1. One compact header row: hide the desktop nav + desktop controls */
+        .hn-nav-links { display: none !important; }
+        .hn-nav-actions > .hn-btn-employer,
+        .hn-nav-actions > .hn-btn-outline,
+        .hn-nav-actions > .hn-btn-primary,
+        .hn-nav-actions > .hn-account { display: none !important; }
+
+        .hn-navbar-inner {
+          display: flex;
+          align-items: center;
+          flex-wrap: nowrap;
+          gap: 0.5rem;
+          min-height: 64px;
+        }
+        .hn-logo-wrap { flex: 0 0 auto; }
+        .hn-navbar-logo { max-width: 145px; height: auto; object-fit: contain; }
+
+        /* 2. Hamburger pinned to the right edge, 44px touch target */
+        .hn-mobile-toggle {
+          display: inline-flex !important;
+          align-items: center;
+          justify-content: center;
+          width: 44px;
+          height: 44px;
+          margin-left: auto;
+          flex: 0 0 auto;
+        }
+
+        /* 3. Vertical, full-width drawer rows (never inline text) */
+        .hn-mobile-menu { width: min(88vw, 360px); }
+        .hn-mobile-body { display: flex; flex-direction: column; }
+        .hn-mobile-nav { display: flex; flex-direction: column; }
+        .hn-mobile-link {
+          display: flex;
+          align-items: center;
+          gap: 0.85rem;
+          width: 100%;
+          min-height: 44px;
+          padding: 0.85rem 0.75rem;
+          font-weight: 600;
+          white-space: nowrap;
+          text-decoration: none;
+        }
+      }
+    </style>
+
     {% block extra_css %}{% endblock %}
 </head>
 <body class="hirenest-body" data-user-authenticated="{% if request.user.is_authenticated %}true{% else %}false{% endif %}" data-user-role="{{ request.user.role|default:'GUEST' }}">
@@ -123,6 +177,7 @@
     <!-- Mobile Navigation Drawer -->
     <div class="offcanvas offcanvas-end hn-mobile-menu" tabindex="-1" id="hnMobileMenu" aria-labelledby="hnMobileMenuLabel">
         <div class="offcanvas-header hn-mobile-header">
+            <h2 id="hnMobileMenuLabel" class="visually-hidden">Mobile navigation</h2>
             <a href="/" class="text-decoration-none" aria-label="HireNest Australia home">
                 <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-mobile-logo" width="130" height="38" decoding="async">
             </a>
@@ -148,8 +203,8 @@
 
             <div class="hn-mobile-actions">
                 {% if nav_role == 'ANONYMOUS' %}
-                    <button type="button" class="hn-btn-primary" data-auth-modal="register">Sign In / Register</button>
                     <button type="button" class="hn-btn-outline" data-auth-modal="login">Log In</button>
+                    <button type="button" class="hn-btn-primary" data-auth-modal="register">Sign In / Register</button>
                     <a href="/employers/login/" class="hn-mobile-employer-link">Employer Log In <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
                 {% else %}
                     {% if nav_status_message %}

@@ -268,6 +268,18 @@ body.hirenest-body {
   }
 }
 
+/* Some rows use g-5 / g-lg-5 (3rem gutter). Below the xl breakpoint the
+   container is full-width with only 0.75rem padding, so the row's -1.5rem
+   negative margin overflows the viewport by 12px on each side. Cap the
+   horizontal gutter here; the full 3rem gutter returns at >= 1200px where the
+   container is centred with room to spare. */
+@media (max-width: 1199.98px) {
+  .row.g-5,
+  .row.g-lg-5 {
+    --bs-gutter-x: 1.5rem;
+  }
+}
+
 /* Phones: keep the bar short and the logo well scaled */
 @media (max-width: 575.98px) {
   .hn-navbar-inner {
@@ -344,12 +356,15 @@ body.hirenest-body {
   display: flex;
   align-items: center;
   gap: 0.85rem;
+  width: 100%;
+  min-height: 44px;
   padding: 0.85rem 0.75rem;
   border-radius: 10px;
   color: var(--hn-text-primary);
   font-weight: 600;
   font-size: 0.95rem;
   text-decoration: none;
+  white-space: nowrap;
   transition: background-color 0.18s ease, color 0.18s ease;
 }
 
