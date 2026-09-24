@@ -3,50 +3,107 @@
 
 {% block title %}{% block employer_title %}Employer Workspace{% endblock %} — HireNest Australia{% endblock %}
 
-{% block extra_css %}
-<style>
-    .hn-workspace-shell { background-color: var(--hn-bg-light, #f8fafc); min-height: 60vh; }
-    .hn-workspace-nav { display: flex; flex-wrap: wrap; gap: .5rem; }
-    .hn-workspace-nav a {
-        text-decoration: none; font-size: .875rem; font-weight: 600;
-        padding: .5rem .9rem; border-radius: 999px; color: #334155;
-        border: 1px solid #e2e8f0; background: #fff; white-space: nowrap;
-    }
-    .hn-workspace-nav a.active { background: #2563eb; border-color: #2563eb; color: #fff; }
-    .hn-workspace-card { border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; }
-    .hn-workspace-title { font-size: 1.35rem; font-weight: 800; color: #0f172a; }
-    @media (max-width: 430px) {
-        .hn-workspace-title { font-size: 1.15rem; }
-        .hn-workspace-nav a { padding: .45rem .75rem; font-size: .8rem; }
-    }
-</style>
+{% block navbar %}
+<header class="hn-navbar hn-employer-navbar">
+    <div class="container-xl">
+        <div class="hn-navbar-inner">
+
+            <a href="/employers/dashboard/" class="hn-logo-wrap" aria-label="HireNest Australia recruiter workspace">
+                <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-navbar-logo" width="150" height="44" decoding="async">
+                <span class="hn-employer-brand-tag">Recruiter Workspace</span>
+            </a>
+
+            <nav class="hn-employer-nav hn-desktop-only" aria-label="Recruiter workspace navigation">
+                <a href="/employers/dashboard/" class="hn-employer-nav-link {% if request.resolver_match.url_name == 'employer_dashboard' %}active{% endif %}">Dashboard</a>
+                <a href="/employers/jobs/" class="hn-employer-nav-link {% if request.resolver_match.url_name in 'employer_jobs,employer_job_create' %}active{% endif %}">Manage Jobs</a>
+                <a href="/employers/candidates/" class="hn-employer-nav-link {% if request.resolver_match.url_name == 'employer_candidates' %}active{% endif %}">Find Candidates</a>
+                <a href="/employers/profile/" class="hn-employer-nav-link {% if request.resolver_match.url_name == 'employer_profile' %}active{% endif %}">Company Profile</a>
+            </nav>
+
+            <div class="hn-nav-actions hn-desktop-only">
+                <div class="dropdown hn-account">
+                    <button class="hn-account-toggle dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Account menu">
+                        <span class="hn-account-avatar" aria-hidden="true">{{ nav_user_initial }}</span>
+                        <span class="hn-account-name d-none d-xl-inline">{{ nav_user_display }}</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end hn-account-menu">
+                        <li class="hn-account-menu-head">
+                            <div class="fw-semibold text-dark text-truncate">{{ nav_user_display }}</div>
+                            <div class="small text-muted text-truncate">{{ company.name|default:"Employer account" }}</div>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item hn-account-item" href="/employers/profile/">
+                                <i class="bi bi-building me-2" aria-hidden="true"></i>Company Profile
+                            </a>
+                        </li>
+                        {% if nav_logout_link %}
+                            <li>
+                                <a class="dropdown-item hn-account-item hn-account-logout" href="{{ nav_logout_link.url }}">
+                                    <i class="bi bi-box-arrow-right me-2" aria-hidden="true"></i>{{ nav_logout_link.label }}
+                                </a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+
+            <button class="hn-mobile-toggle" type="button" data-bs-toggle="offcanvas" data-bs-target="#hnEmployerMobileMenu" aria-controls="hnEmployerMobileMenu" aria-expanded="false" aria-label="Open recruiter navigation menu">
+                <i class="bi bi-list" aria-hidden="true"></i>
+            </button>
+
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+{% block mobile_menu %}
+<div class="offcanvas offcanvas-end hn-mobile-menu hn-employer-drawer" tabindex="-1" id="hnEmployerMobileMenu" aria-labelledby="hnEmployerMobileMenuLabel">
+    <div class="offcanvas-header hn-mobile-header">
+        <h2 id="hnEmployerMobileMenuLabel" class="visually-hidden">Recruiter navigation</h2>
+        <a href="/employers/dashboard/" class="text-decoration-none d-flex align-items-center gap-2" aria-label="HireNest Australia recruiter workspace">
+            <img src="{% static 'images/hirenest-logo.png' %}" alt="HireNest Australia" class="hn-mobile-logo" width="130" height="38" decoding="async">
+            <span class="hn-employer-brand-tag">Recruiter</span>
+        </a>
+        <button type="button" class="hn-mobile-close" data-bs-dismiss="offcanvas" aria-label="Close recruiter navigation menu">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+    <div class="offcanvas-body hn-mobile-body">
+        <nav class="hn-mobile-nav" aria-label="Recruiter mobile navigation">
+            <a href="/employers/dashboard/" class="hn-mobile-link {% if request.resolver_match.url_name == 'employer_dashboard' %}active{% endif %}"><i class="bi bi-speedometer2" aria-hidden="true"></i><span>Dashboard</span></a>
+            <a href="/employers/jobs/" class="hn-mobile-link {% if request.resolver_match.url_name in 'employer_jobs,employer_job_create' %}active{% endif %}"><i class="bi bi-briefcase" aria-hidden="true"></i><span>Manage Jobs</span></a>
+            <a href="/employers/candidates/" class="hn-mobile-link {% if request.resolver_match.url_name == 'employer_candidates' %}active{% endif %}"><i class="bi bi-people" aria-hidden="true"></i><span>Find Candidates</span></a>
+            <a href="/employers/profile/" class="hn-mobile-link {% if request.resolver_match.url_name == 'employer_profile' %}active{% endif %}"><i class="bi bi-building" aria-hidden="true"></i><span>Company Profile</span></a>
+        </nav>
+
+        <div class="hn-mobile-actions">
+            {% if nav_logout_link %}
+                <a href="{{ nav_logout_link.url }}" class="hn-btn-outline hn-mobile-logout">
+                    <i class="bi {{ nav_logout_link.icon }}" aria-hidden="true"></i>{{ nav_logout_link.label }}
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block content %}
-<div class="hn-workspace-shell py-4">
+<div class="hn-workspace-shell">
     <div class="container-xl">
 
-        <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+        <div class="hn-workspace-header">
             <div>
                 <h1 class="hn-workspace-title mb-1">{% block employer_heading %}Recruiter Workspace{% endblock %}</h1>
-                <p class="text-muted small mb-0">
-                    {{ company.name|default:"Your company" }}
+                <div class="hn-workspace-subtitle">
+                    <span>{{ company.name|default:"Your company" }}</span>
                     {% if request.user.recruiter_status == 'ACTIVE' %}
-                        <span class="badge bg-success-subtle text-success ms-2">Approved</span>
+                        <span class="hn-workspace-approved"><i class="bi bi-patch-check-fill" aria-hidden="true"></i>Approved</span>
                     {% endif %}
-                </p>
+                </div>
             </div>
-            <a href="/employers/dashboard/" class="btn btn-sm hn-btn-outline align-self-start">
-                <i class="bi bi-grid-1x2 me-1"></i>Dashboard
-            </a>
+            {% block employer_actions %}{% endblock %}
         </div>
-
-        <nav class="hn-workspace-nav mb-4" aria-label="Employer workspace navigation">
-            <a href="/employers/dashboard/" class="{% if request.resolver_match.url_name == 'employer_dashboard' %}active{% endif %}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
-            <a href="/employers/jobs/" class="{% if request.resolver_match.url_name in 'employer_jobs,employer_job_create' %}active{% endif %}"><i class="bi bi-briefcase me-1"></i>Manage Jobs</a>
-            <a href="/employers/candidates/" class="{% if request.resolver_match.url_name == 'employer_candidates' %}active{% endif %}"><i class="bi bi-people me-1"></i>Find Candidates</a>
-            <a href="/employers/profile/" class="{% if request.resolver_match.url_name == 'employer_profile' %}active{% endif %}"><i class="bi bi-building me-1"></i>Company Profile</a>
-        </nav>
 
         {% block employer_content %}{% endblock %}
     </div>

@@ -3,11 +3,14 @@
 {% block employer_title %}Manage Jobs{% endblock %}
 {% block employer_heading %}Manage Jobs{% endblock %}
 
+{% block employer_actions %}
+<a href="/employers/jobs/new/" class="btn hn-btn-primary hn-workspace-action"><i class="bi bi-plus-lg me-1"></i>Post New Job</a>
+{% endblock %}
+
 {% block employer_content %}
 <div class="hn-workspace-card p-0 overflow-hidden">
     <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
         <span class="fw-bold text-dark"><i class="bi bi-briefcase me-2 text-primary"></i>Your HireNest Job Postings</span>
-        <a href="/employers/jobs/new/" class="btn btn-sm hn-btn-primary"><i class="bi bi-plus-lg me-1"></i>Post New Job</a>
     </div>
 
     <div class="table-responsive">

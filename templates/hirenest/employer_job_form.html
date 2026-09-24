@@ -3,83 +3,191 @@
 {% block employer_title %}Post a Job{% endblock %}
 {% block employer_heading %}Post a HireNest Job{% endblock %}
 
+{% block employer_actions %}
+<a href="/employers/jobs/" class="btn hn-btn-outline hn-workspace-action"><i class="bi bi-arrow-left me-1"></i>Back to Manage Jobs</a>
+{% endblock %}
+
 {% block employer_content %}
-<div class="hn-workspace-card p-3 p-md-4">
-    <form method="post" action="/employers/jobs/new/">
-        {% csrf_token %}
+<form method="post" action="/employers/jobs/new/" class="hn-job-form" novalidate>
+    {% csrf_token %}
 
-        {% if form.non_field_errors %}
-            <div class="alert alert-danger small">{{ form.non_field_errors }}</div>
-        {% endif %}
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger small">{{ form.non_field_errors }}</div>
+    {% endif %}
 
+    <!-- Job Details -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-briefcase" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Job Details</h2>
+                <p class="hn-form-section-desc">Use a clear, recognisable role title candidates will search for.</p>
+            </div>
+        </div>
         <div class="row g-3">
-            <div class="col-md-8">
-                <label class="hn-form-label">Job Title <span class="text-danger">*</span></label>
+            <div class="col-lg-8">
+                <label class="hn-form-label" for="{{ form.title.id_for_label }}">Job Title <span class="text-danger">*</span></label>
                 {{ form.title }}
-                {% if form.title.errors %}<div class="text-danger small">{{ form.title.errors|striptags }}</div>{% endif %}
+                <div class="hn-form-hint">e.g. Registered Nurse, Senior Software Engineer, Project Manager</div>
+                {% if form.title.errors %}<div class="hn-form-error">{{ form.title.errors|striptags }}</div>{% endif %}
             </div>
-            <div class="col-md-4">
-                <label class="hn-form-label">Department</label>
+            <div class="col-lg-4">
+                <label class="hn-form-label" for="{{ form.department.id_for_label }}">Department</label>
                 {{ form.department }}
+                <div class="hn-form-hint">e.g. Engineering, Nursing, Sales</div>
+                {% if form.department.errors %}<div class="hn-form-error">{{ form.department.errors|striptags }}</div>{% endif %}
             </div>
+        </div>
+    </section>
+
+    <!-- Location & Work Arrangement -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-geo-alt" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Location &amp; Work Arrangement</h2>
+                <p class="hn-form-section-desc">Tell candidates where the role is based and how it is worked.</p>
+            </div>
+        </div>
+        <div class="row g-3">
             <div class="col-md-6">
-                <label class="hn-form-label">Location <span class="text-danger">*</span></label>
+                <label class="hn-form-label" for="{{ form.location.id_for_label }}">Location <span class="text-danger">*</span></label>
                 {{ form.location }}
-                {% if form.location.errors %}<div class="text-danger small">{{ form.location.errors|striptags }}</div>{% endif %}
+                <div class="hn-form-hint">e.g. Sydney NSW, Melbourne VIC, Brisbane QLD</div>
+                {% if form.location.errors %}<div class="hn-form-error">{{ form.location.errors|striptags }}</div>{% endif %}
             </div>
             <div class="col-md-3">
-                <label class="hn-form-label">Job Type</label>
+                <label class="hn-form-label" for="{{ form.job_type.id_for_label }}">Job Type</label>
                 {{ form.job_type }}
+                {% if form.job_type.errors %}<div class="hn-form-error">{{ form.job_type.errors|striptags }}</div>{% endif %}
             </div>
             <div class="col-md-3">
-                <label class="hn-form-label">Work Mode</label>
+                <label class="hn-form-label" for="{{ form.work_mode.id_for_label }}">Work Mode</label>
                 {{ form.work_mode }}
+                {% if form.work_mode.errors %}<div class="hn-form-error">{{ form.work_mode.errors|striptags }}</div>{% endif %}
             </div>
+        </div>
+    </section>
+
+    <!-- Experience & Salary -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-currency-dollar" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Experience &amp; Salary</h2>
+                <p class="hn-form-section-desc">Remuneration is shown in Australian dollars (AUD).</p>
+            </div>
+        </div>
+        <div class="row g-3">
             <div class="col-md-3">
-                <label class="hn-form-label">Min Experience (yrs)</label>
+                <label class="hn-form-label" for="{{ form.min_experience.id_for_label }}">Min Experience (years)</label>
                 {{ form.min_experience }}
+                {% if form.min_experience.errors %}<div class="hn-form-error">{{ form.min_experience.errors|striptags }}</div>{% endif %}
             </div>
             <div class="col-md-3">
-                <label class="hn-form-label">Max Experience (yrs)</label>
+                <label class="hn-form-label" for="{{ form.max_experience.id_for_label }}">Max Experience (years)</label>
                 {{ form.max_experience }}
+                {% if form.max_experience.errors %}<div class="hn-form-error">{{ form.max_experience.errors|striptags }}</div>{% endif %}
             </div>
             <div class="col-md-3">
-                <label class="hn-form-label">Min Salary (AUD)</label>
+                <label class="hn-form-label" for="{{ form.min_salary.id_for_label }}">Minimum Salary (AUD)</label>
                 {{ form.min_salary }}
+                <div class="hn-form-hint">Annual salary, e.g. 95000</div>
+                {% if form.min_salary.errors %}<div class="hn-form-error">{{ form.min_salary.errors|striptags }}</div>{% endif %}
             </div>
             <div class="col-md-3">
-                <label class="hn-form-label">Max Salary (AUD)</label>
+                <label class="hn-form-label" for="{{ form.max_salary.id_for_label }}">Maximum Salary (AUD)</label>
                 {{ form.max_salary }}
+                <div class="hn-form-hint">Annual salary, e.g. 115000</div>
+                {% if form.max_salary.errors %}<div class="hn-form-error">{{ form.max_salary.errors|striptags }}</div>{% endif %}
             </div>
             <div class="col-12">
-                <div class="alert alert-light border small text-muted mb-0" role="note">
-                    <i class="bi bi-info-circle me-1 text-primary"></i>
-                    You are responsible for entering accurate remuneration information and for complying with applicable Australian workplace requirements, including minimum pay and conditions. Advertised roles should be based on genuine skills, experience and role requirements.
+                <div class="hn-form-note">
+                    <i class="bi bi-info-circle" aria-hidden="true"></i>
+                    <span>You are responsible for entering accurate remuneration and for complying with Australian workplace requirements, including minimum pay and conditions. Roles should reflect genuine skills, experience and requirements.</span>
                 </div>
             </div>
-            <div class="col-12">
-                <label class="hn-form-label">Required Skills</label>
-                {{ form.required_skills_text }}
-            </div>
-            <div class="col-12">
-                <label class="hn-form-label">Preferred Skills</label>
-                {{ form.preferred_skills_text }}
-            </div>
-            <div class="col-12">
-                <label class="hn-form-label">Job Description <span class="text-danger">*</span></label>
-                {{ form.description }}
-                {% if form.description.errors %}<div class="text-danger small">{{ form.description.errors|striptags }}</div>{% endif %}
-            </div>
-            <div class="col-md-4">
-                <label class="hn-form-label">Status</label>
-                {{ form.status }}
-            </div>
         </div>
+    </section>
 
-        <div class="d-flex flex-wrap gap-2 mt-4">
-            <button type="submit" class="btn hn-btn-primary fw-bold px-4"><i class="bi bi-check-lg me-1"></i>Publish Job</button>
-            <a href="/employers/jobs/" class="btn hn-btn-outline">Cancel</a>
+    <!-- Required Skills -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-check2-circle" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Required Skills</h2>
+                <p class="hn-form-section-desc">The essential skills a candidate must have to be considered.</p>
+            </div>
         </div>
-    </form>
-</div>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="hn-form-label" for="{{ form.required_skills_text.id_for_label }}">Required Skills</label>
+                {{ form.required_skills_text }}
+                <div class="hn-form-hint">Separate each skill with a comma, e.g. Python, Django, AWS</div>
+                {% if form.required_skills_text.errors %}<div class="hn-form-error">{{ form.required_skills_text.errors|striptags }}</div>{% endif %}
+            </div>
+        </div>
+    </section>
+
+    <!-- Preferred Skills -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-plus-circle" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Preferred Skills</h2>
+                <p class="hn-form-section-desc">Nice-to-have skills that help a candidate stand out.</p>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="hn-form-label" for="{{ form.preferred_skills_text.id_for_label }}">Preferred Skills</label>
+                {{ form.preferred_skills_text }}
+                <div class="hn-form-hint">Separate each skill with a comma, e.g. Kubernetes, Terraform</div>
+                {% if form.preferred_skills_text.errors %}<div class="hn-form-error">{{ form.preferred_skills_text.errors|striptags }}</div>{% endif %}
+            </div>
+        </div>
+    </section>
+
+    <!-- Job Description -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-file-earmark-text" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Job Description</h2>
+                <p class="hn-form-section-desc">Summarise the role, key responsibilities and what success looks like.</p>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="hn-form-label" for="{{ form.description.id_for_label }}">Job Description <span class="text-danger">*</span></label>
+                {{ form.description }}
+                {% if form.description.errors %}<div class="hn-form-error">{{ form.description.errors|striptags }}</div>{% endif %}
+            </div>
+        </div>
+    </section>
+
+    <!-- Publishing / Status -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-send" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Publishing</h2>
+                <p class="hn-form-section-desc">Choose when this role goes live on HireNest Australia.</p>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="hn-form-label" for="{{ form.status.id_for_label }}">Status</label>
+                {{ form.status }}
+                <div class="hn-form-hint">Draft keeps it hidden; Active publishes it immediately.</div>
+                {% if form.status.errors %}<div class="hn-form-error">{{ form.status.errors|striptags }}</div>{% endif %}
+            </div>
+        </div>
+    </section>
+
+    <div class="hn-form-actions">
+        <button type="submit" class="btn hn-btn-primary hn-btn-publish"><i class="bi bi-check-lg me-2"></i>Publish Job</button>
+        <a href="/employers/jobs/" class="btn hn-btn-outline">Cancel</a>
+    </div>
+</form>
 {% endblock %}

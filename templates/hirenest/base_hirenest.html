@@ -96,6 +96,7 @@
 <body class="hirenest-body" data-user-authenticated="{% if request.user.is_authenticated %}true{% else %}false{% endif %}" data-user-role="{{ request.user.role|default:'GUEST' }}">
 
     <!-- HireNest Australia Header -->
+    {% block navbar %}
     <header class="hn-navbar">
         <div class="container-xl">
             <div class="hn-navbar-inner">
@@ -173,8 +174,10 @@
             </div>
         </div>
     </header>
+    {% endblock %}
 
     <!-- Mobile Navigation Drawer -->
+    {% block mobile_menu %}
     <div class="offcanvas offcanvas-end hn-mobile-menu" tabindex="-1" id="hnMobileMenu" aria-labelledby="hnMobileMenuLabel">
         <div class="offcanvas-header hn-mobile-header">
             <h2 id="hnMobileMenuLabel" class="visually-hidden">Mobile navigation</h2>
@@ -222,6 +225,7 @@
             </div>
         </div>
     </div>
+    {% endblock %}
 
     <!-- Django Messages Alert Bar -->
     {% if messages %}
