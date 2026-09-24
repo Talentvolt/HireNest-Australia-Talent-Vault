@@ -15,12 +15,12 @@
         <div class="alert alert-danger small">{{ form.non_field_errors }}</div>
     {% endif %}
 
-    <!-- Job Details -->
+    <!-- Role Details -->
     <section class="hn-form-section">
         <div class="hn-form-section-head">
             <span class="hn-form-section-icon"><i class="bi bi-briefcase" aria-hidden="true"></i></span>
             <div>
-                <h2 class="hn-form-section-title">Job Details</h2>
+                <h2 class="hn-form-section-title">Role Details</h2>
                 <p class="hn-form-section-desc">Use a clear, recognisable role title candidates will search for.</p>
             </div>
         </div>
@@ -37,6 +37,16 @@
                 <div class="hn-form-hint">e.g. Engineering, Nursing, Sales</div>
                 {% if form.department.errors %}<div class="hn-form-error">{{ form.department.errors|striptags }}</div>{% endif %}
             </div>
+            <div class="col-md-4">
+                <label class="hn-form-label" for="{{ form.job_type.id_for_label }}">Employment Type <span class="text-danger">*</span></label>
+                {{ form.job_type }}
+                {% if form.job_type.errors %}<div class="hn-form-error">{{ form.job_type.errors|striptags }}</div>{% endif %}
+            </div>
+            <div class="col-md-4">
+                <label class="hn-form-label" for="{{ form.work_mode.id_for_label }}">Work Mode <span class="text-danger">*</span></label>
+                {{ form.work_mode }}
+                {% if form.work_mode.errors %}<div class="hn-form-error">{{ form.work_mode.errors|striptags }}</div>{% endif %}
+            </div>
         </div>
     </section>
 
@@ -45,26 +55,21 @@
         <div class="hn-form-section-head">
             <span class="hn-form-section-icon"><i class="bi bi-geo-alt" aria-hidden="true"></i></span>
             <div>
-                <h2 class="hn-form-section-title">Location &amp; Work Arrangement</h2>
-                <p class="hn-form-section-desc">Tell candidates where the role is based and how it is worked.</p>
+                <h2 class="hn-form-section-title">Location</h2>
+                <p class="hn-form-section-desc">Tell candidates the suburb and state/territory where the role is based.</p>
             </div>
         </div>
         <div class="row g-3">
             <div class="col-md-6">
-                <label class="hn-form-label" for="{{ form.location.id_for_label }}">Location <span class="text-danger">*</span></label>
-                {{ form.location }}
-                <div class="hn-form-hint">e.g. Sydney NSW, Melbourne VIC, Brisbane QLD</div>
-                {% if form.location.errors %}<div class="hn-form-error">{{ form.location.errors|striptags }}</div>{% endif %}
+                <label class="hn-form-label" for="{{ form.suburb.id_for_label }}">Suburb <span class="text-danger">*</span></label>
+                {{ form.suburb }}
+                <div class="hn-form-hint">e.g. Sydney, Melbourne, Brisbane</div>
+                {% if form.suburb.errors %}<div class="hn-form-error">{{ form.suburb.errors|striptags }}</div>{% endif %}
             </div>
-            <div class="col-md-3">
-                <label class="hn-form-label" for="{{ form.job_type.id_for_label }}">Job Type</label>
-                {{ form.job_type }}
-                {% if form.job_type.errors %}<div class="hn-form-error">{{ form.job_type.errors|striptags }}</div>{% endif %}
-            </div>
-            <div class="col-md-3">
-                <label class="hn-form-label" for="{{ form.work_mode.id_for_label }}">Work Mode</label>
-                {{ form.work_mode }}
-                {% if form.work_mode.errors %}<div class="hn-form-error">{{ form.work_mode.errors|striptags }}</div>{% endif %}
+            <div class="col-md-6">
+                <label class="hn-form-label" for="{{ form.state.id_for_label }}">State / Territory <span class="text-danger">*</span></label>
+                {{ form.state }}
+                {% if form.state.errors %}<div class="hn-form-error">{{ form.state.errors|striptags }}</div>{% endif %}
             </div>
         </div>
     </section>
@@ -90,13 +95,13 @@
                 {% if form.max_experience.errors %}<div class="hn-form-error">{{ form.max_experience.errors|striptags }}</div>{% endif %}
             </div>
             <div class="col-md-3">
-                <label class="hn-form-label" for="{{ form.min_salary.id_for_label }}">Minimum Salary (AUD)</label>
+                <label class="hn-form-label" for="{{ form.min_salary.id_for_label }}">Minimum Salary / Rate (AUD)</label>
                 {{ form.min_salary }}
                 <div class="hn-form-hint">Annual salary, e.g. 95000</div>
                 {% if form.min_salary.errors %}<div class="hn-form-error">{{ form.min_salary.errors|striptags }}</div>{% endif %}
             </div>
             <div class="col-md-3">
-                <label class="hn-form-label" for="{{ form.max_salary.id_for_label }}">Maximum Salary (AUD)</label>
+                <label class="hn-form-label" for="{{ form.max_salary.id_for_label }}">Maximum Salary / Rate (AUD)</label>
                 {{ form.max_salary }}
                 <div class="hn-form-hint">Annual salary, e.g. 115000</div>
                 {% if form.max_salary.errors %}<div class="hn-form-error">{{ form.max_salary.errors|striptags }}</div>{% endif %}
@@ -106,6 +111,24 @@
                     <i class="bi bi-info-circle" aria-hidden="true"></i>
                     <span>You are responsible for entering accurate remuneration and for complying with Australian workplace requirements, including minimum pay and conditions. Roles should reflect genuine skills, experience and requirements.</span>
                 </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About the Role & Responsibilities -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-file-earmark-text" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">About the Role &amp; Responsibilities</h2>
+                <p class="hn-form-section-desc">Summarise the role, key responsibilities and what success looks like.</p>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="hn-form-label" for="{{ form.description.id_for_label }}">About the Role <span class="text-danger">*</span></label>
+                {{ form.description }}
+                {% if form.description.errors %}<div class="hn-form-error">{{ form.description.errors|striptags }}</div>{% endif %}
             </div>
         </div>
     </section>
@@ -148,20 +171,40 @@
         </div>
     </section>
 
-    <!-- Job Description -->
+    <!-- Qualifications -->
     <section class="hn-form-section">
         <div class="hn-form-section-head">
-            <span class="hn-form-section-icon"><i class="bi bi-file-earmark-text" aria-hidden="true"></i></span>
+            <span class="hn-form-section-icon"><i class="bi bi-mortarboard" aria-hidden="true"></i></span>
             <div>
-                <h2 class="hn-form-section-title">Job Description</h2>
-                <p class="hn-form-section-desc">Summarise the role, key responsibilities and what success looks like.</p>
+                <h2 class="hn-form-section-title">Qualifications</h2>
+                <p class="hn-form-section-desc">Registrations, licences and formal qualifications required for the role.</p>
             </div>
         </div>
         <div class="row g-3">
             <div class="col-12">
-                <label class="hn-form-label" for="{{ form.description.id_for_label }}">Job Description <span class="text-danger">*</span></label>
-                {{ form.description }}
-                {% if form.description.errors %}<div class="hn-form-error">{{ form.description.errors|striptags }}</div>{% endif %}
+                <label class="hn-form-label" for="{{ form.education.id_for_label }}">Qualifications</label>
+                {{ form.education }}
+                <div class="hn-form-hint">e.g. AHPRA registration, Working with Children Check, White Card</div>
+                {% if form.education.errors %}<div class="hn-form-error">{{ form.education.errors|striptags }}</div>{% endif %}
+            </div>
+        </div>
+    </section>
+
+    <!-- Benefits -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-gift" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Benefits</h2>
+                <p class="hn-form-section-desc">What you offer beyond the salary, such as flexibility, leave and allowances.</p>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="hn-form-label" for="{{ form.benefits.id_for_label }}">Benefits</label>
+                {{ form.benefits }}
+                <div class="hn-form-hint">e.g. Flexible working, novated lease, training budget, parental leave</div>
+                {% if form.benefits.errors %}<div class="hn-form-error">{{ form.benefits.errors|striptags }}</div>{% endif %}
             </div>
         </div>
     </section>

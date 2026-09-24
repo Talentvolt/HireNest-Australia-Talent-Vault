@@ -31,12 +31,21 @@
                     <form method="POST" action="/jobs/{{ job.id }}/apply/" enctype="multipart/form-data">
                         {% csrf_token %}
 
-                        <h4 class="fs-5 fw-bold text-dark mb-3">1. Contact & Location Information</h4>
+                        {% if form.non_field_errors %}
+                            <div class="alert alert-danger small">{{ form.non_field_errors }}</div>
+                        {% endif %}
+
+                        <h4 class="fs-5 fw-bold text-dark mb-3">1. Personal Details</h4>
                         
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
-                                <label class="form-label fw-bold small text-secondary">Full Name <span class="text-danger">*</span></label>
-                                <input type="text" name="full_name" class="form-control" value="{{ profile.full_name|default:request.user.get_full_name }}" required>
+                                <label class="form-label fw-bold small text-secondary">First Name <span class="text-danger">*</span></label>
+                                <input type="text" name="first_name" class="form-control" value="{{ form.first_name.value|default_if_none:request.user.first_name }}" required>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-secondary">Last Name <span class="text-danger">*</span></label>
+                                <input type="text" name="last_name" class="form-control" value="{{ form.last_name.value|default_if_none:request.user.last_name }}" required>
                             </div>
 
                             <div class="col-md-6">
@@ -46,36 +55,75 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-bold small text-secondary">Australian Phone Number <span class="text-danger">*</span></label>
-                                <input type="tel" name="phone_number" class="form-control" value="{{ request.user.phone_number|default:'' }}" placeholder="+61 400 123 456" required>
+                                <label class="form-label fw-bold small text-secondary">Mobile Number <span class="text-danger">*</span></label>
+                                <input type="tel" name="phone_number" class="form-control" value="{{ form.phone_number.value|default_if_none:request.user.phone_number }}" placeholder="+61 400 123 456" required>
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-bold small text-secondary">Current Location (City / Suburb) <span class="text-danger">*</span></label>
-                                <input type="text" name="location" class="form-control" value="{{ profile.location|default:'' }}" placeholder="e.g. Sydney NSW" required>
+                                <label class="form-label fw-bold small text-secondary">Suburb <span class="text-danger">*</span></label>
+                                <input type="text" name="suburb" class="form-control" list="hn-locations" value="{{ form.suburb.value|default_if_none:profile.location }}" placeholder="e.g. Sydney" required>
+                                <datalist id="hn-locations">
+                                    {% for loc in locations %}<option value="{{ loc }}"></option>{% endfor %}
+                                </datalist>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-secondary">State / Territory <span class="text-danger">*</span></label>
+                                <select name="state" class="form-select">
+                                    <option value="">Select state/territory</option>
+                                    <option value="NSW" {% if form.state.value == 'NSW' %}selected{% endif %}>New South Wales (NSW)</option>
+                                    <option value="VIC" {% if form.state.value == 'VIC' %}selected{% endif %}>Victoria (VIC)</option>
+                                    <option value="QLD" {% if form.state.value == 'QLD' %}selected{% endif %}>Queensland (QLD)</option>
+                                    <option value="WA" {% if form.state.value == 'WA' %}selected{% endif %}>Western Australia (WA)</option>
+                                    <option value="SA" {% if form.state.value == 'SA' %}selected{% endif %}>South Australia (SA)</option>
+                                    <option value="TAS" {% if form.state.value == 'TAS' %}selected{% endif %}>Tasmania (TAS)</option>
+                                    <option value="ACT" {% if form.state.value == 'ACT' %}selected{% endif %}>Australian Capital Territory (ACT)</option>
+                                    <option value="NT" {% if form.state.value == 'NT' %}selected{% endif %}>Northern Territory (NT)</option>
+                                </select>
                             </div>
                         </div>
 
-                        <h4 class="fs-5 fw-bold text-dark mb-3">2. Professional Details & Salary Expectations</h4>
+                        <h4 class="fs-5 fw-bold text-dark mb-3">2. Work Rights & Availability</h4>
                         
                         <div class="row g-3 mb-4">
-                            <div class="col-md-4">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold small text-secondary">Work Rights in Australia <span class="text-danger">*</span></label>
+                                <select name="work_rights" class="form-select">
+                                    <option value="">Select your work rights</option>
+                                    <option value="Australian Citizen" {% if form.work_rights.value == 'Australian Citizen' or profile.citizenship == 'Australian Citizen' %}selected{% endif %}>Australian Citizen</option>
+                                    <option value="Australian Permanent Resident" {% if form.work_rights.value == 'Australian Permanent Resident' or profile.citizenship == 'Australian Permanent Resident' %}selected{% endif %}>Australian Permanent Resident</option>
+                                    <option value="New Zealand Citizen" {% if form.work_rights.value == 'New Zealand Citizen' or profile.citizenship == 'New Zealand Citizen' %}selected{% endif %}>New Zealand Citizen</option>
+                                    <option value="Temporary Work Visa (Subclass 482)" {% if form.work_rights.value == 'Temporary Work Visa (Subclass 482)' or profile.citizenship == 'Temporary Work Visa (Subclass 482)' %}selected{% endif %}>Temporary Work Visa (Subclass 482)</option>
+                                    <option value="Student Visa (Subclass 500)" {% if form.work_rights.value == 'Student Visa (Subclass 500)' or profile.citizenship == 'Student Visa (Subclass 500)' %}selected{% endif %}>Student Visa (Subclass 500)</option>
+                                    <option value="Working Holiday Visa (Subclass 417/462)" {% if form.work_rights.value == 'Working Holiday Visa (Subclass 417/462)' or profile.citizenship == 'Working Holiday Visa (Subclass 417/462)' %}selected{% endif %}>Working Holiday Visa (Subclass 417/462)</option>
+                                    <option value="Other / Requires Sponsorship" {% if form.work_rights.value == 'Other / Requires Sponsorship' or profile.citizenship == 'Other / Requires Sponsorship' %}selected{% endif %}>Other / Requires Sponsorship</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small text-secondary">Notice Period (Days)</label>
+                                <input type="number" name="notice_period" class="form-control" value="{{ form.notice_period.value|default_if_none:profile.notice_period }}" min="0">
+                            </div>
+
+                            <div class="col-md-3">
                                 <label class="form-label fw-bold small text-secondary">Total Experience (Years)</label>
                                 <input type="number" step="0.5" name="total_experience" class="form-control" value="{{ profile.total_experience|default:'2' }}" min="0">
                             </div>
 
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <label class="form-label fw-bold small text-secondary">Expected Salary (AUD / yr)</label>
                                 <input type="number" name="expected_salary" class="form-control" value="{{ profile.expected_salary|default:'' }}" placeholder="e.g. 120000">
                             </div>
 
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold small text-secondary">Notice Period (Days)</label>
-                                <input type="number" name="notice_period" class="form-control" value="{{ profile.notice_period|default:'30' }}" min="0">
+                            <div class="col-md-6">
+                                <div class="form-check mt-4 pt-2">
+                                    <input class="form-check-input" type="checkbox" name="is_immediate_joiner" id="immediate-joiner" value="1">
+                                    <label class="form-check-label fw-semibold small text-secondary" for="immediate-joiner">I'm available to start immediately</label>
+                                </div>
                             </div>
                         </div>
 
-                        <h4 class="fs-5 fw-bold text-dark mb-3">3. Resume & Documents</h4>
+                        <h4 class="fs-5 fw-bold text-dark mb-3">3. Resume & Cover Letter</h4>
                         
                         <div class="mb-4 p-3 bg-light rounded-3 border">
                             {% if profile.has_resume %}
@@ -96,13 +144,18 @@
                             <input type="file" name="resume_file" class="form-control" accept=".pdf" {% if not profile.has_resume %}required{% endif %}>
                         </div>
 
-                        <h4 class="fs-5 fw-bold text-dark mb-3">4. Cover Note to Hiring Team (Optional)</h4>
                         <div class="mb-4">
-                            <textarea name="cover_letter" class="form-control" rows="4" placeholder="Briefly highlight why you are a great fit for this Australian role..."></textarea>
+                            <label class="form-label fw-bold small text-secondary">Cover Letter (Optional)</label>
+                            <textarea name="cover_letter" class="form-control" rows="4" placeholder="Briefly highlight why you are a great fit for this Australian role...">{{ form.cover_letter.value|default_if_none:'' }}</textarea>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold small text-secondary">LinkedIn / Professional Profile (Optional)</label>
+                            <input type="url" name="linkedin_url" class="form-control" value="{{ form.linkedin_url.value|default_if_none:profile.linkedin_url }}" placeholder="https://www.linkedin.com/in/your-profile">
                         </div>
 
                         {% if screening_questions %}
-                        <h4 class="fs-5 fw-bold text-dark mb-3">5. Screening Questions</h4>
+                        <h4 class="fs-5 fw-bold text-dark mb-3">4. Screening Questions</h4>
                         <div class="mb-4">
                             {% for q in screening_questions %}
                             <div class="p-3 bg-light rounded-3 border mb-3">
@@ -122,6 +175,15 @@
                             {% endfor %}
                         </div>
                         {% endif %}
+
+                        <div class="p-3 bg-light rounded-3 border mb-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="privacy_consent" id="privacy-consent" required>
+                                <label class="form-check-label small text-secondary" for="privacy-consent">
+                                    I acknowledge that HireNest Australia will collect, use and disclose my personal information to assess my application in line with the <a href="/resources/" class="text-decoration-none">Privacy Policy</a>. <span class="text-danger">*</span>
+                                </label>
+                            </div>
+                        </div>
 
                         <div class="d-flex align-items-center justify-content-between pt-3 border-top">
                             <a href="/jobs/{{ job.id }}/" class="btn btn-outline-secondary">Cancel</a>

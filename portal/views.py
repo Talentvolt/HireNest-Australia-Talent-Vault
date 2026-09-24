@@ -346,6 +346,7 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
         context = {
             'job': job,
             'profile': profile,
+            'form': JobApplicationForm(),
             'locations': POPULAR_AU_LOCATIONS,
             'screening_questions': _screening_questions_display(job),
         }
@@ -364,6 +365,8 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
         form = JobApplicationForm(request.POST, request.FILES)
         if form.is_valid() and not missing_required:
             full_name = form.cleaned_data['full_name']
+            first_name = (form.cleaned_data.get('first_name') or '').strip()
+            last_name = (form.cleaned_data.get('last_name') or '').strip()
             phone_number = form.cleaned_data['phone_number']
             location = form.cleaned_data['location']
             total_experience = form.cleaned_data.get('total_experience') or Decimal('0.0')
@@ -371,6 +374,9 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
             notice_period = form.cleaned_data.get('notice_period') or 30
             cover_letter = form.cleaned_data.get('cover_letter', '')
             resume_file = form.cleaned_data.get('resume_file')
+            linkedin_url = (form.cleaned_data.get('linkedin_url') or '').strip()
+            work_rights = form.cleaned_data.get('work_rights') or ''
+            is_immediate_joiner = bool(form.cleaned_data.get('is_immediate_joiner'))
 
             screening_answers = [
                 {
@@ -383,10 +389,14 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
             ]
 
             # Update Candidate User & Profile
-            if ' ' in full_name:
+            if first_name or last_name:
+                request.user.first_name = first_name
+                request.user.last_name = last_name
+            elif ' ' in full_name:
                 request.user.first_name, request.user.last_name = full_name.split(' ', 1)
             else:
                 request.user.first_name = full_name
+                request.user.last_name = ''
             request.user.phone_number = phone_number
             request.user.save()
 
@@ -396,20 +406,31 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
             if expected_salary:
                 profile.expected_salary = expected_salary
             profile.notice_period = notice_period
+            profile.is_immediate_joiner = is_immediate_joiner
+            if linkedin_url:
+                profile.linkedin_url = linkedin_url
+            if work_rights:
+                profile.work_permit_countries = [work_rights]
             if resume_file:
                 profile.resume = resume_file
             profile.save()
 
             # Create or get Application in existing TalentVault DB
+            application_defaults = {
+                'cover_letter': cover_letter,
+                'stage': Application.ApplicationStage.OPEN,
+                'in_pipeline': True,
+                'screening_answers': screening_answers,
+                'mobile_number': phone_number,
+                'is_immediate_joiner': is_immediate_joiner,
+            }
+            if linkedin_url:
+                application_defaults['linkedin_url'] = linkedin_url
+
             app, created = Application.objects.get_or_create(
                 job=job,
                 candidate=profile,
-                defaults={
-                    'cover_letter': cover_letter,
-                    'stage': Application.ApplicationStage.OPEN,
-                    'in_pipeline': True,
-                    'screening_answers': screening_answers,
-                }
+                defaults=application_defaults,
             )
 
             if created:

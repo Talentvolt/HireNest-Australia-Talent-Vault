@@ -217,6 +217,9 @@ class HirenestEmployerJobCreateView(HirenestEmployerRequiredMixin, View):
         form = EmployerJobForm(request.POST)
         if form.is_valid():
             job = form.save(commit=False)
+            benefits = (form.cleaned_data.get('benefits') or '').strip()
+            if benefits:
+                job.description = f"{job.description.rstrip()}\n\nBenefits\n{benefits}"
             job.company = company
             job.currency = 'AUD'
             # External employers always own their own postings.

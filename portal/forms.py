@@ -5,7 +5,25 @@ from apps.accounts.models import User
 from apps.candidates.models import CandidateProfile
 from apps.companies.models import Company
 from apps.jobs.models import Job
-from .services import AUSTRALIAN_CLASSIFICATIONS
+from .services import AUSTRALIAN_CLASSIFICATIONS, AUSTRALIAN_STATES
+
+AU_JOB_TYPE_CHOICES = [
+    ('FULL_TIME', 'Full-time'),
+    ('PART_TIME', 'Part-time'),
+    ('CASUAL', 'Casual'),
+    ('CONTRACT', 'Contract'),
+    ('FIXED_TERM', 'Fixed-term'),
+]
+
+AU_WORK_MODE_CHOICES = [
+    ('ONSITE', 'On-site'),
+    ('HYBRID', 'Hybrid'),
+    ('REMOTE', 'Remote'),
+]
+
+AU_STATE_CHOICES = [('', 'Select state/territory')] + [
+    (s['code'], f"{s['name']} ({s['code']})") for s in AUSTRALIAN_STATES
+]
 
 CITIZENSHIP_CHOICES = [
     ('Australian Citizen', 'Australian Citizen'),
@@ -117,13 +135,29 @@ class EmployerJobForm(forms.ModelForm):
     Only Australian (AUD) fields are exposed. The company, currency and audit
     fields are set server-side by the view.
     """
+    job_type = forms.ChoiceField(choices=AU_JOB_TYPE_CHOICES, label="Employment type")
+    work_mode = forms.ChoiceField(choices=AU_WORK_MODE_CHOICES, label="Work mode")
+    location = forms.CharField(max_length=100, required=False, label="Location")
+    suburb = forms.CharField(max_length=80, required=False, label="Suburb")
+    state = forms.ChoiceField(choices=AU_STATE_CHOICES, required=False, label="State / Territory")
+    education = forms.CharField(
+        required=False,
+        label="Qualifications",
+        widget=forms.TextInput(attrs={'placeholder': 'e.g. AHPRA registration, White Card, Certificate III'}),
+    )
+    benefits = forms.CharField(
+        required=False,
+        label="Benefits",
+        widget=forms.Textarea(attrs={'rows': 4, 'placeholder': 'e.g. Flexible working, novated lease, training budget, parental leave'}),
+    )
+
     class Meta:
         model = Job
         fields = [
-            'title', 'department', 'location', 'job_type', 'work_mode',
+            'title', 'department', 'job_type', 'work_mode', 'location',
             'min_experience', 'max_experience', 'min_salary', 'max_salary',
-            'required_skills_text', 'preferred_skills_text', 'description',
-            'status',
+            'required_skills_text', 'preferred_skills_text', 'education',
+            'description', 'status',
         ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 6}),
@@ -133,19 +167,65 @@ class EmployerJobForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        choice_fields = {'job_type', 'work_mode', 'status'}
+        choice_fields = {'job_type', 'work_mode', 'status', 'state'}
         for name, field in self.fields.items():
             css = 'form-select hn-form-control' if name in choice_fields else 'form-control hn-form-control'
             existing = field.widget.attrs.get('class', '')
             field.widget.attrs['class'] = f"{existing} {css}".strip()
 
+    def clean(self):
+        cleaned_data = super().clean()
+        suburb = (cleaned_data.get('suburb') or '').strip()
+        state = cleaned_data.get('state') or ''
+        location = (cleaned_data.get('location') or '').strip()
+
+        if suburb or state:
+            location = ' '.join(part for part in [suburb, state] if part)
+            cleaned_data['location'] = location
+
+        if not location:
+            self.add_error('suburb', 'Please enter the job location (suburb and state/territory).')
+
+        return cleaned_data
+
 
 class JobApplicationForm(forms.Form):
-    full_name = forms.CharField(max_length=100, required=True)
-    phone_number = forms.CharField(max_length=30, required=True)
-    location = forms.CharField(max_length=100, required=True)
+    full_name = forms.CharField(max_length=100, required=False)
+    first_name = forms.CharField(max_length=50, required=False, label="First name")
+    last_name = forms.CharField(max_length=50, required=False, label="Last name")
+    phone_number = forms.CharField(max_length=30, required=True, label="Mobile")
+    location = forms.CharField(max_length=100, required=False)
+    suburb = forms.CharField(max_length=80, required=False, label="Suburb")
+    state = forms.ChoiceField(choices=AU_STATE_CHOICES, required=False, label="State / Territory")
     total_experience = forms.DecimalField(max_digits=4, decimal_places=1, required=False, initial=0.0)
     expected_salary = forms.DecimalField(max_digits=12, decimal_places=2, required=False)
     notice_period = forms.IntegerField(required=False, initial=30)
+    is_immediate_joiner = forms.BooleanField(required=False, label="I'm available to start immediately")
     resume_file = forms.FileField(required=False)
     cover_letter = forms.CharField(widget=forms.Textarea, required=False)
+    linkedin_url = forms.URLField(required=False, label="LinkedIn / professional profile")
+    work_rights = forms.ChoiceField(choices=CITIZENSHIP_CHOICES, required=False, label="Work rights in Australia")
+    privacy_consent = forms.BooleanField(required=False, label="Privacy acknowledgement")
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        first_name = (cleaned_data.get('first_name') or '').strip()
+        last_name = (cleaned_data.get('last_name') or '').strip()
+        full_name = (cleaned_data.get('full_name') or '').strip()
+        if first_name or last_name:
+            full_name = ' '.join(part for part in [first_name, last_name] if part)
+            cleaned_data['full_name'] = full_name
+        if not full_name:
+            self.add_error('first_name', 'Please enter your first and last name.')
+
+        suburb = (cleaned_data.get('suburb') or '').strip()
+        state = cleaned_data.get('state') or ''
+        location = (cleaned_data.get('location') or '').strip()
+        if suburb or state:
+            location = ' '.join(part for part in [suburb, state] if part)
+            cleaned_data['location'] = location
+        if not location:
+            self.add_error('suburb', 'Please enter your suburb and state/territory.')
+
+        return cleaned_data
