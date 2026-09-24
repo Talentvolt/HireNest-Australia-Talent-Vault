@@ -658,7 +658,32 @@ class HireNestAustraliaStandaloneTests(TestCase):
         self.assertEqual(post_response.url, '/employers/registration-pending/')
         self.assertNotIn('talent-vault.in', post_response.url)
 
-        new_recruiter = User.objects.filter(email='hr@qantas.com.au').first()
+    def test_employer_registration_with_long_website_url(self):
+        # Regression test for DataError when company website URL exceeds 200 characters
+        long_url = "https://www.qantas.com.au/au/en/about-us/company-profile/press-room/media-releases/2026/september/very-long-path-exceeding-two-hundred-characters-to-ensure-database-field-length-supports-extended-urls-without-data-error.html"
+        self.assertGreater(len(long_url), 200)
+
+        payload = {
+            'org_name': 'Qantas Long URL Corp',
+            'email': 'longurl@qantas.com.au',
+            'phone_number': '+61 2 9691 3637',
+            'hiring_type': 'organization',
+            'industry': 'Aviation',
+            'website': long_url,
+            'location': 'Sydney NSW',
+            'password': 'SecureRecruiter123!',
+            'confirm_password': 'SecureRecruiter123!',
+            'terms': 'on'
+        }
+        post_response = self.client.post('/employers/register/', data=payload, follow=False)
+        self.assertEqual(post_response.status_code, 302)
+        self.assertEqual(post_response.url, '/employers/registration-pending/')
+
+        comp = Company.objects.filter(name='Qantas Long URL Corp').first()
+        self.assertIsNotNone(comp)
+        self.assertEqual(comp.website, long_url)
+
+        new_recruiter = User.objects.filter(email='longurl@qantas.com.au').first()
         self.assertIsNotNone(new_recruiter)
         self.assertEqual(new_recruiter.role, User.Role.RECRUITER)
         # New employers must start PENDING and must not be auto-activated.

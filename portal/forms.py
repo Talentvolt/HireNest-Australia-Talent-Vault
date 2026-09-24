@@ -83,7 +83,7 @@ class EmployerRegistrationForm(forms.Form):
         initial='organization'
     )
     industry = forms.CharField(max_length=100, required=False)
-    website = forms.URLField(required=False, assume_scheme='https')
+    website = forms.URLField(required=False, max_length=500, assume_scheme='https')
     location = forms.CharField(max_length=100, required=False, initial='Sydney NSW')
     password = forms.CharField(widget=forms.PasswordInput, min_length=8, required=True)
     confirm_password = forms.CharField(widget=forms.PasswordInput, min_length=8, required=True)

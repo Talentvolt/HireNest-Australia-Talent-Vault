@@ -9,7 +9,7 @@ class Company(BaseAppModel):
     """
     name = models.CharField(max_length=255, unique=True, db_index=True)
     slug = models.SlugField(max_length=255, unique=True)
-    website = models.URLField(blank=True, null=True)
+    website = models.URLField(max_length=500, blank=True, null=True)
     industry = models.CharField(max_length=100, db_index=True)
     description = models.TextField()
     logo = models.ImageField(upload_to='company_logos/', blank=True, null=True)
