@@ -101,6 +101,28 @@
                             <textarea name="cover_letter" class="form-control" rows="4" placeholder="Briefly highlight why you are a great fit for this Australian role..."></textarea>
                         </div>
 
+                        {% if screening_questions %}
+                        <h4 class="fs-5 fw-bold text-dark mb-3">5. Screening Questions</h4>
+                        <div class="mb-4">
+                            {% for q in screening_questions %}
+                            <div class="p-3 bg-light rounded-3 border mb-3">
+                                <label class="form-label fw-bold small text-secondary mb-2">
+                                    {{ forloop.counter }}. {{ q.question }}{% if q.required %} <span class="text-danger">*</span>{% endif %}
+                                </label>
+                                {% if q.type == 'YES_NO' %}
+                                    <select name="question_{{ q.index }}" class="form-select" {% if q.required %}required{% endif %}>
+                                        <option value="">Select...</option>
+                                        <option value="Yes" {% if q.answer == 'Yes' %}selected{% endif %}>Yes</option>
+                                        <option value="No" {% if q.answer == 'No' %}selected{% endif %}>No</option>
+                                    </select>
+                                {% else %}
+                                    <input type="text" name="question_{{ q.index }}" class="form-control" value="{{ q.answer }}" placeholder="Your answer" {% if q.required %}required{% endif %}>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
                         <div class="d-flex align-items-center justify-content-between pt-3 border-top">
                             <a href="/jobs/{{ job.id }}/" class="btn btn-outline-secondary">Cancel</a>
                             <button type="submit" class="btn hn-btn-primary btn-lg fw-bold px-5">

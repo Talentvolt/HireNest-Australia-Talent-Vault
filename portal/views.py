@@ -297,6 +297,34 @@ class HirenestJobDetailView(View):
 # ==============================================================================
 # 4. DIRECT JOB APPLICATION VIEW
 # ==============================================================================
+def _screening_questions_display(job, posted=None):
+    """Build a display-friendly screening question list for the apply form."""
+    questions = []
+    raw = getattr(job, 'screening_questions', None) or []
+    for i, q in enumerate(raw):
+        if isinstance(q, dict):
+            text = q.get('question', '') or ''
+            q_type = q.get('type', 'TEXT') or 'TEXT'
+            required = bool(q.get('required', False))
+        else:
+            text = str(q)
+            q_type = 'TEXT'
+            required = False
+        if not text:
+            continue
+        answer = ''
+        if posted is not None:
+            answer = (posted.get(f'question_{i}') or '').strip()
+        questions.append({
+            'index': i,
+            'question': text,
+            'type': 'YES_NO' if q_type == 'YES_NO' else 'TEXT',
+            'required': required,
+            'answer': answer,
+        })
+    return questions
+
+
 class HirenestJobApplyView(LoginRequiredMixin, View):
     """
     Candidate direct application submission for a specific Australian job.
@@ -319,6 +347,7 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
             'job': job,
             'profile': profile,
             'locations': POPULAR_AU_LOCATIONS,
+            'screening_questions': _screening_questions_display(job),
         }
         return render(request, 'hirenest/job_apply.html', context)
 
@@ -326,8 +355,14 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
         job = get_object_or_404(get_australian_jobs_queryset(), pk=pk)
         profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
 
+        screening_questions = _screening_questions_display(job, request.POST)
+        missing_required = [
+            q['question'] for q in screening_questions
+            if q['required'] and not q['answer']
+        ]
+
         form = JobApplicationForm(request.POST, request.FILES)
-        if form.is_valid():
+        if form.is_valid() and not missing_required:
             full_name = form.cleaned_data['full_name']
             phone_number = form.cleaned_data['phone_number']
             location = form.cleaned_data['location']
@@ -336,6 +371,16 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
             notice_period = form.cleaned_data.get('notice_period') or 30
             cover_letter = form.cleaned_data.get('cover_letter', '')
             resume_file = form.cleaned_data.get('resume_file')
+
+            screening_answers = [
+                {
+                    'question': q['question'],
+                    'answer': q['answer'],
+                    'type': q['type'],
+                    'required': q['required'],
+                }
+                for q in screening_questions
+            ]
 
             # Update Candidate User & Profile
             if ' ' in full_name:
@@ -363,6 +408,7 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
                     'cover_letter': cover_letter,
                     'stage': Application.ApplicationStage.OPEN,
                     'in_pipeline': True,
+                    'screening_answers': screening_answers,
                 }
             )
 
@@ -379,11 +425,15 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
 
             return redirect('/applications/')
 
+        if missing_required:
+            messages.error(request, "Please answer all required screening questions before submitting.")
+
         context = {
             'job': job,
             'profile': profile,
             'form': form,
             'locations': POPULAR_AU_LOCATIONS,
+            'screening_questions': screening_questions,
         }
         return render(request, 'hirenest/job_apply.html', context)
 

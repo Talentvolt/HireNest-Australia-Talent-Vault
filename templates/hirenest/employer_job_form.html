@@ -166,6 +166,73 @@
         </div>
     </section>
 
+    <!-- Screening Questions -->
+    <section class="hn-form-section">
+        <div class="hn-form-section-head">
+            <span class="hn-form-section-icon"><i class="bi bi-question-circle" aria-hidden="true"></i></span>
+            <div>
+                <h2 class="hn-form-section-title">Screening Questions</h2>
+                <p class="hn-form-section-desc">Add up to 5 questions candidates answer when they apply. Leave empty to skip.</p>
+            </div>
+        </div>
+
+        <div id="hn-screening-list" class="hn-screening-list">
+            {% for q in screening_questions %}
+            <div class="hn-screening-item">
+                <div class="hn-screening-item-main">
+                    <div class="hn-screening-question">
+                        <label class="hn-form-label">Question</label>
+                        <input type="text" name="question_text_{{ forloop.counter0 }}" class="form-control hn-form-control" placeholder="e.g. Do you hold a current Working with Children Check?" value="{{ q.question }}">
+                    </div>
+                    <div class="hn-screening-row">
+                        <div class="hn-screening-type">
+                            <label class="hn-form-label">Answer Type</label>
+                            <select name="question_type_{{ forloop.counter0 }}" class="form-select hn-form-control">
+                                <option value="TEXT" {% if q.type == 'TEXT' %}selected{% endif %}>Text</option>
+                                <option value="YES_NO" {% if q.type == 'YES_NO' %}selected{% endif %}>Yes / No</option>
+                            </select>
+                        </div>
+                        <div class="hn-screening-required form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" name="question_required_{{ forloop.counter0 }}" id="hn-req-{{ forloop.counter0 }}" value="1" {% if q.required %}checked{% endif %}>
+                            <label class="form-check-label" for="hn-req-{{ forloop.counter0 }}">Required</label>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="hn-screening-remove" aria-label="Remove question"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+            </div>
+            {% endfor %}
+        </div>
+
+        <template id="hn-screening-template">
+            <div class="hn-screening-item">
+                <div class="hn-screening-item-main">
+                    <div class="hn-screening-question">
+                        <label class="hn-form-label">Question</label>
+                        <input type="text" name="question_text_tpl" class="form-control hn-form-control" placeholder="e.g. Do you hold a current Working with Children Check?">
+                    </div>
+                    <div class="hn-screening-row">
+                        <div class="hn-screening-type">
+                            <label class="hn-form-label">Answer Type</label>
+                            <select name="question_type_tpl" class="form-select hn-form-control">
+                                <option value="TEXT">Text</option>
+                                <option value="YES_NO">Yes / No</option>
+                            </select>
+                        </div>
+                        <div class="hn-screening-required form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" name="question_required_tpl" id="hn-req-tpl" value="1">
+                            <label class="form-check-label" for="hn-req-tpl">Required</label>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="hn-screening-remove" aria-label="Remove question"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+            </div>
+        </template>
+
+        <input type="hidden" name="screening_count" id="hn-screening-count" value="{{ screening_questions|length }}">
+
+        <button type="button" id="hn-add-question" class="btn hn-btn-outline hn-add-question"><i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Add Question</button>
+    </section>
+
     <!-- Publishing / Status -->
     <section class="hn-form-section">
         <div class="hn-form-section-head">
@@ -190,4 +257,59 @@
         <a href="/employers/jobs/" class="btn hn-btn-outline">Cancel</a>
     </div>
 </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var list = document.getElementById('hn-screening-list');
+    var template = document.getElementById('hn-screening-template');
+    var addBtn = document.getElementById('hn-add-question');
+    var countInput = document.getElementById('hn-screening-count');
+    var MAX = 5;
+
+    if (!list || !template || !addBtn || !countInput) return;
+
+    function items() {
+        return Array.prototype.slice.call(list.querySelectorAll('.hn-screening-item'));
+    }
+
+    function renumber() {
+        var rows = items();
+        rows.forEach(function (row, i) {
+            var text = row.querySelector('input[name^="question_text_"]');
+            var type = row.querySelector('select[name^="question_type_"]');
+            var req = row.querySelector('input[name^="question_required_"]');
+            var reqLabel = row.querySelector('.hn-screening-required label');
+            if (text) text.name = 'question_text_' + i;
+            if (type) type.name = 'question_type_' + i;
+            if (req) {
+                req.name = 'question_required_' + i;
+                req.id = 'hn-req-' + i;
+                if (reqLabel) reqLabel.setAttribute('for', 'hn-req-' + i);
+            }
+        });
+        countInput.value = rows.length;
+        if (addBtn) addBtn.hidden = rows.length >= MAX;
+    }
+
+    function addQuestion() {
+        if (items().length >= MAX) return;
+        var node = document.importNode(template.content, true);
+        list.appendChild(node);
+        renumber();
+    }
+
+    list.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('.hn-screening-remove') : null;
+        if (!btn) return;
+        var row = btn.closest('.hn-screening-item');
+        if (row) row.parentNode.removeChild(row);
+        renumber();
+    });
+
+    addBtn.addEventListener('click', addQuestion);
+    renumber();
+})();
+</script>
 {% endblock %}

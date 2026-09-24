@@ -105,6 +105,34 @@ def _get_company_for_user(user):
     return membership.company if membership else None
 
 
+MAX_SCREENING_QUESTIONS = 5
+
+
+def _parse_screening_questions(post):
+    """Parse screening questions from the job posting form submission."""
+    try:
+        count = int(post.get('screening_count', '0') or 0)
+    except (TypeError, ValueError):
+        count = 0
+    count = max(0, min(count, MAX_SCREENING_QUESTIONS))
+
+    questions = []
+    for i in range(count):
+        text = (post.get(f'question_text_{i}') or '').strip()
+        if not text:
+            continue
+        q_type = post.get(f'question_type_{i}', 'TEXT')
+        if q_type not in ('TEXT', 'YES_NO'):
+            q_type = 'TEXT'
+        required = post.get(f'question_required_{i}') == '1'
+        questions.append({
+            'question': text,
+            'type': q_type,
+            'required': required,
+        })
+    return questions
+
+
 # ==============================================================================
 # EMPLOYER REGISTRATION PENDING CONFIRMATION
 # ==============================================================================
@@ -176,6 +204,7 @@ class HirenestEmployerJobCreateView(HirenestEmployerRequiredMixin, View):
         return render(request, 'hirenest/employer_job_form.html', {
             'form': EmployerJobForm(),
             'company': _get_company_for_user(request.user),
+            'screening_questions': [],
         })
 
     def post(self, request):
@@ -184,6 +213,7 @@ class HirenestEmployerJobCreateView(HirenestEmployerRequiredMixin, View):
             messages.error(request, "Your employer account is not linked to a company yet.")
             return redirect('/employers/dashboard/')
 
+        screening_questions = _parse_screening_questions(request.POST)
         form = EmployerJobForm(request.POST)
         if form.is_valid():
             job = form.save(commit=False)
@@ -193,6 +223,7 @@ class HirenestEmployerJobCreateView(HirenestEmployerRequiredMixin, View):
             job.source = Job.JobSource.EMPLOYER
             job.created_by = request.user
             job.updated_by = request.user
+            job.screening_questions = screening_questions
             job.save()
             messages.success(request, f"Job '{job.title}' was created successfully.")
             return redirect('/employers/jobs/')
@@ -200,6 +231,7 @@ class HirenestEmployerJobCreateView(HirenestEmployerRequiredMixin, View):
         return render(request, 'hirenest/employer_job_form.html', {
             'form': form,
             'company': company,
+            'screening_questions': screening_questions,
         })
 
 
