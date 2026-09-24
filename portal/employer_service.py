@@ -90,6 +90,12 @@ def apply_employer_action(user, action, reason=''):
         user.recruiter_status = User.RecruiterStatus.ACTIVE
         user.is_active = True
         user.save(update_fields=['recruiter_status', 'is_active', 'updated_at'])
+        company = get_employer_company(user)
+        from .email_service import send_employer_status_email
+        try:
+            send_employer_status_email(user, company=company, action=action, reason=reason)
+        except Exception:
+            pass
         label = 'reactivated' if action == 'reactivate' else 'approved'
         return True, f"Employer {user.email} {label}. Status is now ACTIVE."
 
@@ -97,12 +103,24 @@ def apply_employer_action(user, action, reason=''):
         user.recruiter_status = User.RecruiterStatus.REJECTED
         user.is_active = False
         user.save(update_fields=['recruiter_status', 'is_active', 'updated_at'])
+        company = get_employer_company(user)
+        from .email_service import send_employer_status_email
+        try:
+            send_employer_status_email(user, company=company, action=action, reason=reason)
+        except Exception:
+            pass
         return True, f"Employer {user.email} rejected."
 
     if action == 'suspend':
         user.recruiter_status = User.RecruiterStatus.SUSPENDED
         user.is_active = False
         user.save(update_fields=['recruiter_status', 'is_active', 'updated_at'])
+        company = get_employer_company(user)
+        from .email_service import send_employer_status_email
+        try:
+            send_employer_status_email(user, company=company, action=action, reason=reason)
+        except Exception:
+            pass
         return True, f"Employer {user.email} suspended."
 
     return False, f"Unsupported action: {action}"

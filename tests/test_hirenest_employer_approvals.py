@@ -11,7 +11,9 @@ These tests verify:
 """
 import json
 from decimal import Decimal
+from unittest.mock import patch
 
+from django.core import mail
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
@@ -21,6 +23,7 @@ from apps.companies.models import Company, CompanyMember
 from apps.jobs.models import Job
 
 from portal.services import get_australian_jobs_queryset
+from portal.employer_service import apply_employer_action
 
 
 ADMIN_API_KEY = 'test-hirenest-admin-key-12345'
@@ -379,3 +382,119 @@ class HireNestEmployerApprovalTests(TestCase):
         self.assertContains(jobs_page, 'Senior Python Engineer')
         # The employer workspace only exposes its own company's jobs.
         self.assertNotContains(jobs_page, 'Secret Other Company Role')
+
+
+class HireNestEmailNotificationTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        mail.outbox.clear()
+
+    @override_settings(HIRENEST_ADMIN_NOTIFICATION_EMAIL='admin@hirenest.com.au')
+    def test_employer_registration_sends_admin_notification_email(self):
+        payload = {
+            'org_name': 'Atlassian Sydney',
+            'email': 'newrecruiter@atlassian.com.au',
+            'phone_number': '+61 2 9123 4567',
+            'hiring_type': 'organization',
+            'industry': 'Software & Tech',
+            'website': 'https://www.atlassian.com',
+            'location': 'Sydney NSW',
+            'password': 'VerySecurePassword123!',
+            'confirm_password': 'VerySecurePassword123!',
+            'terms': 'on',
+        }
+        response = self.client.post('/employers/register/', data=payload, follow=False)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, '/employers/registration-pending/')
+
+        # Verify admin notification email was sent exactly once (no duplicates)
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertIn('admin@hirenest.com.au', email.to)
+        self.assertEqual(email.subject, 'New HireNest Australia Employer Registration')
+        body = email.body
+        self.assertIn('Atlassian Sydney', body)
+        self.assertIn('newrecruiter@atlassian.com.au', body)
+        self.assertIn('+61 2 9123 4567', body)
+        self.assertIn('Software & Tech', body)
+        self.assertIn('Sydney NSW', body)
+        self.assertIn('https://www.atlassian.com', body)
+        self.assertIn('PENDING', body)
+        self.assertIn('/employers/approvals/', body)
+        # Verify password is NEVER in the email
+        self.assertNotIn('VerySecurePassword123!', body)
+
+    @override_settings(HIRENEST_ADMIN_NOTIFICATION_EMAIL='admin@hirenest.com.au')
+    def test_employer_registration_succeeds_when_email_fails(self):
+        with patch('portal.email_service.send_mail', side_effect=Exception("SMTP Connection Error")):
+            payload = {
+                'org_name': 'Resilient Corp',
+                'email': 'resilient@corp.com.au',
+                'phone_number': '+61 2 9876 5432',
+                'hiring_type': 'organization',
+                'industry': 'Mining',
+                'location': 'Perth WA',
+                'password': 'SecurePassword123!',
+                'confirm_password': 'SecurePassword123!',
+                'terms': 'on',
+            }
+            response = self.client.post('/employers/register/', data=payload, follow=False)
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.url, '/employers/registration-pending/')
+
+            user = User.objects.filter(email='resilient@corp.com.au').first()
+            self.assertIsNotNone(user)
+            self.assertEqual(user.recruiter_status, User.RecruiterStatus.PENDING)
+
+    def test_employer_approval_sends_approval_email(self):
+        company, user = make_employer('pending2@company.com', 'Pending Company 2', User.RecruiterStatus.PENDING)
+        mail.outbox.clear()
+
+        ok, message = apply_employer_action(user, 'approve')
+        self.assertTrue(ok)
+        self.assertEqual(user.recruiter_status, User.RecruiterStatus.ACTIVE)
+
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertIn(user.email, email.to)
+        self.assertEqual(email.subject, 'Your HireNest Australia Employer Account Has Been Approved')
+        body = email.body
+        self.assertIn('Pending Company 2', body)
+        self.assertIn('ACTIVE', body)
+        self.assertIn('/employers/login/', body)
+        self.assertNotIn('EmployerPassword123!', body)
+
+    def test_employer_rejection_suspension_reactivation_emails(self):
+        company, user = make_employer('action@company.com', 'Action Company', User.RecruiterStatus.PENDING)
+        mail.outbox.clear()
+
+        # Reject
+        ok, _ = apply_employer_action(user, 'reject', reason='Incomplete business details')
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('HireNest Australia Employer Registration Update', mail.outbox[0].subject)
+        self.assertIn('Rejected', mail.outbox[0].body)
+        self.assertIn('Incomplete business details', mail.outbox[0].body)
+
+        mail.outbox.clear()
+        # Reactivate
+        ok, _ = apply_employer_action(user, 'reactivate')
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Your HireNest Australia Employer Account Has Been Approved', mail.outbox[0].subject)
+
+        mail.outbox.clear()
+        # Suspend
+        ok, _ = apply_employer_action(user, 'suspend')
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Your HireNest Australia Employer Account Has Been Suspended', mail.outbox[0].subject)
+        self.assertIn('SUSPENDED', mail.outbox[0].body)
+
+    def test_failed_approval_action_does_not_send_email(self):
+        company, user = make_employer('invalid@company.com', 'Invalid Company', User.RecruiterStatus.PENDING)
+        mail.outbox.clear()
+
+        ok, message = apply_employer_action(user, 'invalid_action')
+        self.assertFalse(ok)
+        self.assertEqual(len(mail.outbox), 0)

@@ -439,6 +439,7 @@ DEFAULT_FROM_EMAIL = (
     (f"HireNest Australia <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else 'HireNest Australia <noreply@hirenest.com.au>')
 )
 EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', 10))
+HIRENEST_ADMIN_NOTIFICATION_EMAIL = os.environ.get('HIRENEST_ADMIN_NOTIFICATION_EMAIL', 'admin@hirenest.com.au')
 
 if os.environ.get('EMAIL_BACKEND'):
     EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND')

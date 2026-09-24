@@ -856,6 +856,12 @@ class HirenestEmployerRegisterView(View):
                     designation="Hiring Lead"
                 )
 
+            from .email_service import send_admin_new_employer_email
+            try:
+                send_admin_new_employer_email(user, company)
+            except Exception:
+                logger.exception("Error sending admin new employer email")
+
             messages.success(
                 request,
                 "Your HireNest employer account has been created and is awaiting approval."
