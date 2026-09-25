@@ -1,10 +1,32 @@
 import logging
+from email.utils import parseaddr
+
 from django.conf import settings
-from django.core.mail import send_mail, EmailMultiAlternatives
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 
 from apps.accounts.services.email_service import mask_email
 
 logger = logging.getLogger(__name__)
+
+
+def _email_from_pair():
+    """
+    Return ``(envelope_from, display_from)``.
+
+    The SMTP envelope ``MAIL FROM`` must be a bare address (e.g.
+    ``otp@hirenest.com.au``), while the visible ``From`` header may keep the
+    display name (``HireNest Australia <otp@hirenest.com.au>``). Django derives
+    the envelope sender from ``EmailMessage.from_email``, so we keep that value
+    bare and put the display name in the ``From`` header instead.
+    """
+    configured = (
+        getattr(settings, 'DEFAULT_FROM_EMAIL', '')
+        or 'HireNest Australia <noreply@hirenest.com.au>'
+    )
+    name, address = parseaddr(configured)
+    envelope = address or configured.strip()
+    display = configured if name else envelope
+    return envelope, display
 
 
 def send_employer_otp(email, otp):
@@ -15,10 +37,7 @@ def send_employer_otp(email, otp):
     """
     target_email = email.strip().lower()
     subject = "Your HireNest Australia Employer Verification Code"
-    from_email = (
-        getattr(settings, 'DEFAULT_FROM_EMAIL', '')
-        or 'HireNest Australia <noreply@hirenest.com.au>'
-    )
+    envelope_from, display_from = _email_from_pair()
 
     text_content = (
         f"Your HireNest Australia employer verification code is: {otp}\n\n"
@@ -47,8 +66,9 @@ def send_employer_otp(email, otp):
         email_message = EmailMultiAlternatives(
             subject=subject,
             body=text_content,
-            from_email=from_email,
+            from_email=envelope_from,
             to=[target_email],
+            headers={"From": display_from},
         )
         email_message.attach_alternative(html_content, "text/html")
         email_message.send(fail_silently=False)
@@ -68,6 +88,8 @@ def send_admin_new_employer_email(user, company=None):
     admin_email = getattr(settings, 'HIRENEST_ADMIN_NOTIFICATION_EMAIL', 'admin@hirenest.com.au')
     if not admin_email:
         return
+
+    envelope_from, display_from = _email_from_pair()
 
     company_name = company.name if company else (user.get_full_name() or user.email)
     contact_name = user.get_full_name() or user.email
@@ -96,13 +118,13 @@ def send_admin_new_employer_email(user, company=None):
     )
 
     try:
-        send_mail(
+        EmailMessage(
             subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[admin_email],
-            fail_silently=False,
-        )
+            body=message,
+            from_email=envelope_from,
+            to=[admin_email],
+            headers={"From": display_from},
+        ).send(fail_silently=False)
     except Exception as e:
         logger.exception(f"Failed to send admin notification email for employer {user.email}: {e}")
 
@@ -115,6 +137,8 @@ def send_employer_status_email(user, company=None, action='approve', reason=''):
     """
     if not user or not user.email:
         return
+
+    envelope_from, display_from = _email_from_pair()
 
     company_name = company.name if company else (user.get_full_name() or user.email)
     site_url = getattr(settings, 'SITE_URL', 'https://hirenest.com.au')
@@ -162,12 +186,12 @@ def send_employer_status_email(user, company=None, action='approve', reason=''):
         return
 
     try:
-        send_mail(
+        EmailMessage(
             subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
+            body=message,
+            from_email=envelope_from,
+            to=[user.email],
+            headers={"From": display_from},
+        ).send(fail_silently=False)
     except Exception as e:
         logger.exception(f"Failed to send employer status email ({action}) to {user.email}: {e}")

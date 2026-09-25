@@ -456,7 +456,7 @@ class HireNestEmailNotificationTests(TestCase):
 
     @override_settings(HIRENEST_ADMIN_NOTIFICATION_EMAIL='admin@hirenest.com.au')
     def test_employer_registration_succeeds_when_email_fails(self):
-        with patch('portal.email_service.send_mail', side_effect=Exception("SMTP Connection Error")):
+        with patch('portal.email_service.EmailMessage', side_effect=Exception("SMTP Connection Error")):
             payload = {
                 'org_name': 'Resilient Corp',
                 'email': 'resilient@corp.com.au',
