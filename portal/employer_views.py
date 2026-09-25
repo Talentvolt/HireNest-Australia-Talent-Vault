@@ -27,7 +27,6 @@ from django.views.generic import ListView
 
 from apps.accounts.models import User
 from apps.applications.models import Application
-from apps.candidates.models import CandidateProfile
 from apps.jobs.models import Job
 
 from .forms import EmployerJobForm
@@ -168,7 +167,6 @@ class HirenestEmployerDashboardView(HirenestEmployerRequiredMixin, View):
             'company': company,
             'total_jobs': jobs.count(),
             'active_jobs': jobs.filter(status=Job.JobStatus.ACTIVE).count(),
-            'total_candidates': CandidateProfile.objects.count(),
             'total_applications': applications.count(),
             'recent_jobs': jobs.order_by('-created_at')[:5],
             'recent_applications': applications[:5],

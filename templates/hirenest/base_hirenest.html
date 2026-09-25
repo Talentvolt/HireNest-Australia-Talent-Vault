@@ -119,13 +119,25 @@
                 <div class="hn-nav-actions hn-desktop-only">
 
                     {% if nav_role == 'ANONYMOUS' %}
-                        <!-- Anonymous: employer CTA + candidate auth entry -->
-                        <a href="/employers/" class="hn-btn-employer">
-                            <i class="bi bi-building" aria-hidden="true"></i>
-                            <span>For Employers</span>
-                        </a>
-                        <button type="button" class="hn-btn-outline" onclick="openCandidateAuthModal('login')">Log In</button>
-                        <button type="button" class="hn-btn-primary" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
+                        {% if '/employers' in request.path %}
+                            <!-- Employer pages: route auth actions to Employer Login / Register -->
+                            <a href="/employers/login/" class="hn-btn-outline">
+                                <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
+                                <span>Employer Log In</span>
+                            </a>
+                            <a href="/employers/register/" class="hn-btn-primary">
+                                <i class="bi bi-building-add" aria-hidden="true"></i>
+                                <span>Employer Register</span>
+                            </a>
+                        {% else %}
+                            <!-- Anonymous: employer CTA + candidate auth entry -->
+                            <a href="/employers/" class="hn-btn-employer">
+                                <i class="bi bi-building" aria-hidden="true"></i>
+                                <span>For Employers</span>
+                            </a>
+                            <button type="button" class="hn-btn-outline" onclick="openCandidateAuthModal('login')">Log In</button>
+                            <button type="button" class="hn-btn-primary" onclick="openCandidateAuthModal('register')">Sign In / Register</button>
+                        {% endif %}
                     {% else %}
                         <!-- Signed-in: single account menu replaces auth buttons -->
                         <div class="dropdown hn-account">
@@ -206,9 +218,14 @@
 
             <div class="hn-mobile-actions">
                 {% if nav_role == 'ANONYMOUS' %}
-                    <button type="button" class="hn-btn-outline" data-auth-modal="login">Log In</button>
-                    <button type="button" class="hn-btn-primary" data-auth-modal="register">Sign In / Register</button>
-                    <a href="/employers/login/" class="hn-mobile-employer-link">Employer Log In <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+                    {% if '/employers' in request.path %}
+                        <a href="/employers/login/" class="hn-btn-outline">Employer Log In</a>
+                        <a href="/employers/register/" class="hn-btn-primary">Employer Register</a>
+                    {% else %}
+                        <button type="button" class="hn-btn-outline" data-auth-modal="login">Log In</button>
+                        <button type="button" class="hn-btn-primary" data-auth-modal="register">Sign In / Register</button>
+                        <a href="/employers/login/" class="hn-mobile-employer-link">Employer Log In <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+                    {% endif %}
                 {% else %}
                     {% if nav_status_message %}
                         <div class="hn-mobile-status hn-mobile-status-{{ nav_status_tone }}">
@@ -356,8 +373,10 @@
         </div>
     </footer>
 
-    <!-- Candidate authentication (Google) modal component -->
-    {% include "hirenest/auth_modal.html" %}
+    <!-- Candidate authentication (Google) modal component (candidate pages only) -->
+    {% if '/employers' not in request.path %}
+        {% include "hirenest/auth_modal.html" %}
+    {% endif %}
 
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
