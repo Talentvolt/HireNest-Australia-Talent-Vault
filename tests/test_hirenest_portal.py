@@ -1,9 +1,11 @@
 import os
 import json
+import re
 from types import SimpleNamespace
 from decimal import Decimal
 from django.test import TestCase, Client
 from django.conf import settings
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.accounts.models import User
 from apps.accounts.adapters import CandidateAccountAdapter
@@ -17,6 +19,16 @@ from portal.services import (
     normalize_australian_location,
     get_candidate_recommended_jobs,
 )
+
+
+def _otp_from_outbox():
+    for message in reversed(mail.outbox):
+        body = getattr(message, 'body', '') or ''
+        if 'verification code' in body.lower():
+            match = re.search(r'\b(\d{6})\b', body)
+            if match:
+                return match.group(1)
+    return None
 
 
 class HireNestAustraliaStandaloneTests(TestCase):
@@ -654,8 +666,8 @@ class HireNestAustraliaStandaloneTests(TestCase):
         }
         post_response = self.client.post('/employers/register/', data=payload, follow=False)
         self.assertEqual(post_response.status_code, 302)
-        # Registration stays inside HireNest and never redirects to TalentVault.
-        self.assertEqual(post_response.url, '/employers/registration-pending/')
+        # Registration first requires email OTP verification.
+        self.assertEqual(post_response.url, '/employers/verify-otp/')
         self.assertNotIn('talent-vault.in', post_response.url)
 
     def test_employer_registration_with_long_website_url(self):
@@ -677,7 +689,12 @@ class HireNestAustraliaStandaloneTests(TestCase):
         }
         post_response = self.client.post('/employers/register/', data=payload, follow=False)
         self.assertEqual(post_response.status_code, 302)
-        self.assertEqual(post_response.url, '/employers/registration-pending/')
+        self.assertEqual(post_response.url, '/employers/verify-otp/')
+
+        otp = _otp_from_outbox()
+        verify_response = self.client.post('/employers/verify-otp/', data={'otp': otp}, follow=False)
+        self.assertEqual(verify_response.status_code, 302)
+        self.assertEqual(verify_response.url, '/employers/registration-pending/')
 
         comp = Company.objects.filter(name='Qantas Long URL Corp').first()
         self.assertIsNotNone(comp)

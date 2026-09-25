@@ -1,8 +1,62 @@
 import logging
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMultiAlternatives
+
+from apps.accounts.services.email_service import mask_email
 
 logger = logging.getLogger(__name__)
+
+
+def send_employer_otp(email, otp):
+    """
+    Send the 6-digit email OTP to an employer's official work email during
+    registration. Reuses the shared Django email configuration; never logs the
+    plaintext OTP.
+    """
+    target_email = email.strip().lower()
+    subject = "Your HireNest Australia Employer Verification Code"
+    from_email = (
+        getattr(settings, 'DEFAULT_FROM_EMAIL', '')
+        or 'HireNest Australia <noreply@hirenest.com.au>'
+    )
+
+    text_content = (
+        f"Your HireNest Australia employer verification code is: {otp}\n\n"
+        f"Enter this 6-digit code to verify your official work email and complete "
+        f"your employer registration.\n\n"
+        f"This code is valid for 10 minutes. Never share this code with anyone.\n\n"
+        f"If you did not request this verification code, please ignore this email.\n\n"
+        f"(c) 2026 HireNest Australia. All rights reserved."
+    )
+
+    html_content = (
+        '<div style="font-family: Arial, sans-serif; padding: 20px; '
+        'background-color: #FAF9FF; text-align: center;">'
+        '<h2 style="color: #0F172A;">Your HireNest Australia Employer Verification Code</h2>'
+        '<div style="font-size: 36px; font-weight: bold; color: #0284C7; '
+        'background: #F0F9FF; padding: 15px; border-radius: 12px; margin: 20px 0; '
+        'letter-spacing: 8px;">{otp}</div>'
+        '<p style="color: #64748B;">This code is valid for 10 minutes. '
+        'Never share this code with anyone.</p>'
+        '<p style="color: #64748B; font-size: 13px;">Notice: If you don\'t find this '
+        'email in your Inbox, please check your Spam or Promotions folder.</p>'
+        '</div>'
+    ).format(otp=otp)
+
+    try:
+        email_message = EmailMultiAlternatives(
+            subject=subject,
+            body=text_content,
+            from_email=from_email,
+            to=[target_email],
+        )
+        email_message.attach_alternative(html_content, "text/html")
+        email_message.send(fail_silently=False)
+        logger.info(f"Successfully sent employer verification code to {mask_email(target_email)}")
+        return True, "Verification code sent to your email successfully."
+    except Exception as exc:
+        logger.error(f"Failed to send employer verification code to {mask_email(target_email)}: {exc}")
+        return False, "Failed to send verification code. Please try again."
 
 
 def send_admin_new_employer_email(user, company=None):

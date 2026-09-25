@@ -10,6 +10,7 @@ These tests verify:
 - HireNest jobs/candidates remain isolated from TalentVault.
 """
 import json
+import re
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -29,6 +30,24 @@ from portal.employer_service import apply_employer_action
 ADMIN_API_KEY = 'test-hirenest-admin-key-12345'
 API_LIST_URL = '/api/admin/employer-approvals/'
 APPROVALS_PAGE_URL = '/employers/approvals/'
+
+
+def _latest_otp_from_outbox():
+    for message in reversed(mail.outbox):
+        body = getattr(message, 'body', '') or ''
+        if 'verification code' in body.lower():
+            match = re.search(r'\b(\d{6})\b', body)
+            if match:
+                return match.group(1)
+    return None
+
+
+def _register_and_verify_employer(client, payload):
+    """Register an employer and complete email OTP verification."""
+    client.post('/employers/register/', data=payload, follow=False)
+    otp = _latest_otp_from_outbox()
+    verify_response = client.post('/employers/verify-otp/', data={'otp': otp}, follow=False)
+    return verify_response, otp
 
 
 def make_employer(email, company_name, status, is_active=True):
@@ -134,8 +153,13 @@ class HireNestEmployerApprovalTests(TestCase):
         }, follow=False)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, '/employers/registration-pending/')
+        self.assertEqual(response.url, '/employers/verify-otp/')
         self.assertNotIn('talent-vault.in', response.url)
+
+        otp = _latest_otp_from_outbox()
+        verify_response = self.client.post('/employers/verify-otp/', data={'otp': otp}, follow=False)
+        self.assertEqual(verify_response.status_code, 302)
+        self.assertEqual(verify_response.url, '/employers/registration-pending/')
 
         pending_page = self.client.get('/employers/registration-pending/')
         self.assertEqual(pending_page.status_code, 200)
@@ -146,7 +170,7 @@ class HireNestEmployerApprovalTests(TestCase):
     # 2. Registration creates a PENDING HireNest employer
     # ------------------------------------------------------------------
     def test_employer_registration_creates_pending_hirenest_employer(self):
-        self.client.post('/employers/register/', data={
+        _register_and_verify_employer(self.client, {
             'org_name': 'Pending Co Australia',
             'email': 'jobs@pendingco.com',
             'phone_number': '+61 3 9000 2222',
@@ -404,7 +428,14 @@ class HireNestEmailNotificationTests(TestCase):
         }
         response = self.client.post('/employers/register/', data=payload, follow=False)
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, '/employers/registration-pending/')
+        self.assertEqual(response.url, '/employers/verify-otp/')
+
+        otp = _latest_otp_from_outbox()
+        mail.outbox.clear()
+
+        verify_response = self.client.post('/employers/verify-otp/', data={'otp': otp}, follow=False)
+        self.assertEqual(verify_response.status_code, 302)
+        self.assertEqual(verify_response.url, '/employers/registration-pending/')
 
         # Verify admin notification email was sent exactly once (no duplicates)
         self.assertEqual(len(mail.outbox), 1)
@@ -439,7 +470,12 @@ class HireNestEmailNotificationTests(TestCase):
             }
             response = self.client.post('/employers/register/', data=payload, follow=False)
             self.assertEqual(response.status_code, 302)
-            self.assertEqual(response.url, '/employers/registration-pending/')
+            self.assertEqual(response.url, '/employers/verify-otp/')
+
+            otp = _latest_otp_from_outbox()
+            verify_response = self.client.post('/employers/verify-otp/', data={'otp': otp}, follow=False)
+            self.assertEqual(verify_response.status_code, 302)
+            self.assertEqual(verify_response.url, '/employers/registration-pending/')
 
             user = User.objects.filter(email='resilient@corp.com.au').first()
             self.assertIsNotNone(user)

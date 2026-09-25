@@ -19,6 +19,8 @@ from .views import (
     HirenestEmployerLandingView,
     HirenestEmployerRegisterView,
     HirenestEmployerLoginView,
+    HirenestEmployerOTPVerificationView,
+    HirenestEmployerOTPResendView,
     HirenestCompaniesView,
     HirenestCompanyDetailView,
     HirenestSalaryGuideView,
@@ -63,6 +65,8 @@ urlpatterns = [
     # Employer Suite (HireNest-only — never redirects to TalentVault)
     path('employers/', HirenestEmployerLandingView.as_view(), name='employer_landing'),
     path('employers/register/', HirenestEmployerRegisterView.as_view(), name='employer_register'),
+    path('employers/verify-otp/', HirenestEmployerOTPVerificationView.as_view(), name='employer_verify_otp'),
+    path('employers/verify-otp/resend/', HirenestEmployerOTPResendView.as_view(), name='employer_otp_resend'),
     path('employers/registration-pending/', HirenestEmployerRegistrationPendingView.as_view(), name='employer_registration_pending'),
     path('employers/login/', HirenestEmployerLoginView.as_view(), name='employer_login'),
 

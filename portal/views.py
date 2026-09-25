@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import timedelta
 from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
@@ -13,11 +14,13 @@ from django.db.models import Q, Count
 from django.utils import timezone
 from django.utils.text import slugify
 
-from apps.accounts.models import User
+from apps.accounts.models import User, OTPVerification
 from apps.jobs.models import Job, JobSkill
 from apps.companies.models import Company, CompanyMember
 from apps.candidates.models import CandidateProfile, CandidateSkill, SavedJob
 from apps.applications.models import Application, ApplicationHistory
+
+from apps.accounts.services.email_service import generate_otp, mask_email
 
 from .services import (
     AUSTRALIAN_STATES,
@@ -42,6 +45,7 @@ from .forms import (
     JobApplicationForm,
 )
 from .employer_service import employer_status_message
+from .email_service import send_admin_new_employer_email, send_employer_otp
 
 logger = logging.getLogger(__name__)
 
@@ -862,13 +866,75 @@ class HirenestEmployerLandingView(View):
         return render(request, 'hirenest/employer_landing.html')
 
 
+def _create_pending_employer(data):
+    """
+    Create a PENDING HireNest employer/recruiter record (Company + User +
+    CompanyMember) and notify the admin. Called only after email OTP
+    verification succeeds. Never auto-approves the employer.
+    """
+    org_name = data['org_name']
+    email = data['email'].strip().lower()
+    phone_number = data['phone_number']
+    industry = data.get('industry', 'General Business')
+    website = data.get('website', '')
+    location = data.get('location', 'Sydney NSW')
+    password = data['password']
+
+    base_slug = slugify(org_name) or 'company'
+    slug = base_slug
+    counter = 1
+    while Company.objects.filter(slug=slug).exists():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+
+    with transaction.atomic():
+        # HireNest company record (HireNest database only).
+        company, _ = Company.objects.get_or_create(
+            name=org_name,
+            defaults={
+                'slug': slug,
+                'industry': industry,
+                'website': website,
+                'location': location,
+                'description': f"{org_name} is an Australian employer on HireNest.",
+                'is_active': True,
+            }
+        )
+
+        # HireNest employer/recruiter user. Starts as PENDING and is NOT
+        # activated until a TalentVault/HireNest admin approves it.
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            phone_number=phone_number,
+            role=User.Role.RECRUITER,
+            recruiter_status=User.RecruiterStatus.PENDING,
+            is_active=True,
+            is_verified=False,
+        )
+
+        CompanyMember.objects.create(
+            company=company,
+            user=user,
+            role=CompanyMember.MemberRole.ADMIN,
+            designation="Hiring Lead"
+        )
+
+    try:
+        send_admin_new_employer_email(user, company)
+    except Exception:
+        logger.exception("Error sending admin new employer email")
+
+    return user
+
+
 class HirenestEmployerRegisterView(View):
     """
     Employer registration on HireNest Australia.
 
-    Creates a HireNest employer/recruiter record in the HireNest database with
-    status PENDING. Employers are never auto-activated, are never redirected
-    into TalentVault, and are sent to a HireNest confirmation page.
+    Sends a 6-digit email OTP to the employer's official work email. The
+    employer/recruiter record is created only after the OTP is verified, with
+    status PENDING (never auto-activated, never redirected into TalentVault).
     """
     def get(self, request):
         if request.user.is_authenticated and request.user.role in [User.Role.RECRUITER, User.Role.COMPANY_ADMIN]:
@@ -878,66 +944,61 @@ class HirenestEmployerRegisterView(View):
     def post(self, request):
         form = EmployerRegistrationForm(request.POST)
         if form.is_valid():
-            org_name = form.cleaned_data['org_name']
-            email = form.cleaned_data['email']
-            phone_number = form.cleaned_data['phone_number']
-            hiring_type = form.cleaned_data.get('hiring_type', 'organization')
-            industry = form.cleaned_data.get('industry', 'General Business')
-            website = form.cleaned_data.get('website', '')
-            location = form.cleaned_data.get('location', 'Sydney NSW')
-            password = form.cleaned_data['password']
+            email = form.cleaned_data['email'].strip().lower()
 
-            base_slug = slugify(org_name) or 'company'
-            slug = base_slug
-            counter = 1
-            while Company.objects.filter(slug=slug).exists():
-                slug = f"{base_slug}-{counter}"
-                counter += 1
+            otp = generate_otp()
+            now = timezone.now()
+            expires_at = now + timedelta(minutes=10)
 
-            with transaction.atomic():
-                # HireNest company record (HireNest database only).
-                company, _ = Company.objects.get_or_create(
-                    name=org_name,
-                    defaults={
-                        'slug': slug,
-                        'industry': industry,
-                        'website': website,
-                        'location': location,
-                        'description': f"{org_name} is an Australian employer on HireNest.",
-                        'is_active': True,
-                    }
+            OTPVerification.cleanup_expired()
+            otp_record = OTPVerification.objects.filter(
+                email=email, verified=False
+            ).order_by('-created_at').first()
+            if otp_record is None:
+                otp_record = OTPVerification(
+                    email=email, expires_at=expires_at,
+                    attempts=0, resend_count=0, verified=False,
                 )
+            else:
+                otp_record.email = email
+                otp_record.expires_at = expires_at
+                otp_record.attempts = 0
+                otp_record.resend_count = 0
+                otp_record.verified = False
+            otp_record.set_otp(otp)
+            otp_record.save()
 
-                # HireNest employer/recruiter user. Starts as PENDING and is NOT
-                # activated until a TalentVault/HireNest admin approves it.
-                user = User.objects.create_user(
-                    email=email,
-                    password=password,
-                    phone_number=phone_number,
-                    role=User.Role.RECRUITER,
-                    recruiter_status=User.RecruiterStatus.PENDING,
-                    is_active=True,
-                    is_verified=False,
-                )
+            success, msg = send_employer_otp(email, otp)
+            if not success:
+                form.add_error(None, f"Email verification delivery failed: {msg}. Please check your email address and try again.")
+                return render(request, 'hirenest/employer_register.html', {
+                    'errors': [err for err_list in form.errors.values() for err in err_list],
+                    'locations': POPULAR_AU_LOCATIONS,
+                    'org_name': request.POST.get('org_name', ''),
+                    'email': request.POST.get('email', ''),
+                    'phone_number': request.POST.get('phone_number', ''),
+                    'hiring_type': request.POST.get('hiring_type', 'organization'),
+                    'industry': request.POST.get('industry', ''),
+                    'website': request.POST.get('website', ''),
+                    'location': request.POST.get('location', 'Sydney NSW'),
+                })
 
-                CompanyMember.objects.create(
-                    company=company,
-                    user=user,
-                    role=CompanyMember.MemberRole.ADMIN,
-                    designation="Hiring Lead"
-                )
+            # Hold the registration data in the session until the OTP is verified.
+            request.session['employer_registration'] = {
+                'org_name': form.cleaned_data['org_name'],
+                'email': email,
+                'phone_number': form.cleaned_data['phone_number'],
+                'hiring_type': form.cleaned_data.get('hiring_type', 'organization'),
+                'industry': form.cleaned_data.get('industry', 'General Business'),
+                'website': form.cleaned_data.get('website', ''),
+                'location': form.cleaned_data.get('location', 'Sydney NSW'),
+                'password': form.cleaned_data['password'],
+            }
+            request.session['employer_otp_email'] = email
+            request.session['employer_otp_sent_at'] = timezone.now().timestamp()
 
-            from .email_service import send_admin_new_employer_email
-            try:
-                send_admin_new_employer_email(user, company)
-            except Exception:
-                logger.exception("Error sending admin new employer email")
-
-            messages.success(
-                request,
-                "Your HireNest employer account has been created and is awaiting approval."
-            )
-            return redirect('/employers/registration-pending/')
+            messages.info(request, "A 6-digit verification code has been sent to your work email.")
+            return redirect('/employers/verify-otp/')
 
         errors = [err for err_list in form.errors.values() for err in err_list]
         return render(request, 'hirenest/employer_register.html', {
@@ -951,6 +1012,131 @@ class HirenestEmployerRegisterView(View):
             'website': request.POST.get('website', ''),
             'location': request.POST.get('location', 'Sydney NSW'),
         })
+
+
+class HirenestEmployerOTPVerificationView(View):
+    """Verify the employer's 6-digit email OTP and create the PENDING record."""
+
+    template_name = 'hirenest/employer_otp_verification.html'
+
+    def _context(self, email, **extra):
+        context = {'email': email, 'masked_email': mask_email(email) if email else ''}
+        context.update(extra)
+        return context
+
+    def _active_session(self, request):
+        email = request.session.get('employer_otp_email', '')
+        pending = request.session.get('employer_registration')
+        return (email, pending) if (email and pending) else (None, None)
+
+    def get(self, request):
+        email, pending = self._active_session(request)
+        if not email or not pending:
+            messages.warning(request, "No active employer registration session found. Please register again.")
+            return redirect('/employers/register/')
+        return render(request, self.template_name, self._context(email))
+
+    def post(self, request):
+        email, pending = self._active_session(request)
+        if not email or not pending:
+            messages.warning(request, "No active employer registration session found. Please register again.")
+            return redirect('/employers/register/')
+
+        otp_entered = request.POST.get('otp', '').strip()
+
+        OTPVerification.cleanup_expired()
+        otp_record = OTPVerification.objects.filter(
+            email=email, verified=False
+        ).order_by('-created_at').first()
+
+        if otp_record is None:
+            return render(request, self.template_name, self._context(email, error="The verification code has expired or does not exist. Please resend a new code."))
+
+        if otp_record.is_expired():
+            return render(request, self.template_name, self._context(email, error="The verification code has expired (10 minute limit). Please resend a new code."))
+
+        if otp_record.attempts >= 5:
+            return render(request, self.template_name, self._context(email, error="Maximum verification attempts (5) exceeded. Please resend a new code."))
+
+        if not otp_record.check_otp(otp_entered):
+            otp_record.attempts += 1
+            otp_record.save()
+            remaining = max(0, 5 - otp_record.attempts)
+            return render(request, self.template_name, self._context(email, error=f"Invalid verification code. {remaining} attempt(s) remaining."))
+
+        otp_record.verified = True
+        otp_record.save()
+
+        try:
+            _create_pending_employer(pending)
+        except Exception:
+            logger.exception("Employer creation error after OTP verification")
+            return render(request, self.template_name, self._context(email, error="Could not complete your registration. Please try again."))
+
+        otp_record.delete()
+        request.session.pop('employer_registration', None)
+        request.session.pop('employer_otp_email', None)
+        request.session.pop('employer_otp_sent_at', None)
+
+        messages.success(request, "Your work email has been verified. Your employer account is now awaiting approval.")
+        return redirect('/employers/registration-pending/')
+
+
+class HirenestEmployerOTPResendView(View):
+    """Resend the employer email OTP, gated by a 60-second cooldown."""
+
+    template_name = 'hirenest/employer_otp_verification.html'
+
+    def post(self, request):
+        email = request.session.get('employer_otp_email', '')
+        pending = request.session.get('employer_registration')
+        if not email or not pending:
+            messages.warning(request, "No active employer registration session found. Please register again.")
+            return redirect('/employers/register/')
+
+        context = {'email': email, 'masked_email': mask_email(email)}
+
+        now = timezone.now()
+        last_sent = request.session.get('employer_otp_sent_at')
+        if last_sent:
+            try:
+                elapsed = now.timestamp() - float(last_sent)
+            except (TypeError, ValueError):
+                elapsed = 60
+            if elapsed < 60:
+                wait = max(1, int(60 - elapsed))
+                context['error'] = f"Please wait {wait} second(s) before requesting another code."
+                return render(request, self.template_name, context)
+
+        otp = generate_otp()
+        expires_at = now + timedelta(minutes=10)
+
+        OTPVerification.cleanup_expired()
+        otp_record = OTPVerification.objects.filter(
+            email=email, verified=False
+        ).order_by('-created_at').first()
+        if otp_record is None:
+            otp_record = OTPVerification(
+                email=email, expires_at=expires_at,
+                attempts=0, resend_count=0, verified=False,
+            )
+        else:
+            otp_record.email = email
+            otp_record.expires_at = expires_at
+            otp_record.attempts = 0
+            otp_record.verified = False
+        otp_record.resend_count = (otp_record.resend_count or 0) + 1
+        otp_record.set_otp(otp)
+        otp_record.save()
+
+        success, msg = send_employer_otp(email, otp)
+        if not success:
+            context['error'] = f"Failed to resend the verification code: {msg}."
+            return render(request, self.template_name, context)
+
+        request.session['employer_otp_sent_at'] = now.timestamp()
+        messages.info(request, "A new verification code has been sent to your work email.")
+        return redirect('/employers/verify-otp/')
 
 
 class HirenestEmployerLoginView(View):
