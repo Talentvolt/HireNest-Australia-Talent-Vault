@@ -123,7 +123,6 @@ class HireNestNavigationTests(TestCase):
         resp = self.client.get('/')
         self.assertContains(resp, 'Recruiter Dashboard')
         self.assertContains(resp, 'Manage Jobs')
-        self.assertContains(resp, 'Find Candidates')
         self.assertContains(resp, 'Company Profile')
         self.assertContains(resp, 'Log Out')
         self.assertNotContains(resp, 'openCandidateAuthModal(')
@@ -192,7 +191,7 @@ class HireNestNavigationTests(TestCase):
     def test_mobile_menu_employer(self):
         self.client.force_login(self.approved_user)
         menu = _mobile_menu_html(self.client.get('/').content.decode('utf-8'))
-        for label in ['Recruiter Dashboard', 'Manage Jobs', 'Find Candidates', 'Company Profile', 'Log Out']:
+        for label in ['Recruiter Dashboard', 'Manage Jobs', 'Company Profile', 'Log Out']:
             self.assertIn(label, menu)
         self.assertNotIn('My Dashboard', menu)
         self.assertNotIn('openCandidateAuthModal(', menu)

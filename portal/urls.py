@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import RedirectView
 from .views import (
     HirenestLandingView,
     HirenestJobSearchView,
@@ -29,7 +30,6 @@ from .employer_views import (
     HirenestEmployerDashboardView,
     HirenestEmployerJobsView,
     HirenestEmployerJobCreateView,
-    HirenestEmployerCandidatesView,
     HirenestEmployerProfileView,
     HirenestEmployerApprovalsView,
     HirenestEmployerApprovalsAPIView,
@@ -70,7 +70,7 @@ urlpatterns = [
     path('employers/dashboard/', HirenestEmployerDashboardView.as_view(), name='employer_dashboard'),
     path('employers/jobs/', HirenestEmployerJobsView.as_view(), name='employer_jobs'),
     path('employers/jobs/new/', HirenestEmployerJobCreateView.as_view(), name='employer_job_create'),
-    path('employers/candidates/', HirenestEmployerCandidatesView.as_view(), name='employer_candidates'),
+    path('employers/candidates/', RedirectView.as_view(url='/employers/dashboard/'), name='employer_candidates'),
     path('employers/profile/', HirenestEmployerProfileView.as_view(), name='employer_profile'),
 
     # HireNest employer approvals (admin-only)

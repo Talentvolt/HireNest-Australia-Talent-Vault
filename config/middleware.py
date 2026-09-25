@@ -39,7 +39,6 @@ CANDIDATE_PROTECTED_PREFIXES = (
 EMPLOYER_PROTECTED_PREFIXES = (
     '/employers/dashboard/',
     '/employers/jobs/',
-    '/employers/candidates/',
     '/employers/profile/',
 )
 

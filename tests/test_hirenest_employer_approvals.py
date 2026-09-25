@@ -239,7 +239,6 @@ class HireNestEmployerApprovalTests(TestCase):
 
         self.assertEqual(self.client.get('/employers/jobs/').status_code, 200)
         self.assertEqual(self.client.get('/employers/jobs/new/').status_code, 200)
-        self.assertEqual(self.client.get('/employers/candidates/').status_code, 200)
         self.assertEqual(self.client.get('/employers/profile/').status_code, 200)
 
     # ------------------------------------------------------------------

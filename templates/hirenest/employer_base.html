@@ -16,7 +16,6 @@
             <nav class="hn-employer-nav hn-desktop-only" aria-label="Recruiter workspace navigation">
                 <a href="/employers/dashboard/" class="hn-employer-nav-link {% if request.resolver_match.url_name == 'employer_dashboard' %}active{% endif %}">Dashboard</a>
                 <a href="/employers/jobs/" class="hn-employer-nav-link {% if request.resolver_match.url_name in 'employer_jobs,employer_job_create' %}active{% endif %}">Manage Jobs</a>
-                <a href="/employers/candidates/" class="hn-employer-nav-link {% if request.resolver_match.url_name == 'employer_candidates' %}active{% endif %}">Find Candidates</a>
                 <a href="/employers/profile/" class="hn-employer-nav-link {% if request.resolver_match.url_name == 'employer_profile' %}active{% endif %}">Company Profile</a>
             </nav>
 
@@ -73,7 +72,6 @@
         <nav class="hn-mobile-nav" aria-label="Recruiter mobile navigation">
             <a href="/employers/dashboard/" class="hn-mobile-link {% if request.resolver_match.url_name == 'employer_dashboard' %}active{% endif %}"><i class="bi bi-speedometer2" aria-hidden="true"></i><span>Dashboard</span></a>
             <a href="/employers/jobs/" class="hn-mobile-link {% if request.resolver_match.url_name in 'employer_jobs,employer_job_create' %}active{% endif %}"><i class="bi bi-briefcase" aria-hidden="true"></i><span>Manage Jobs</span></a>
-            <a href="/employers/candidates/" class="hn-mobile-link {% if request.resolver_match.url_name == 'employer_candidates' %}active{% endif %}"><i class="bi bi-people" aria-hidden="true"></i><span>Find Candidates</span></a>
             <a href="/employers/profile/" class="hn-mobile-link {% if request.resolver_match.url_name == 'employer_profile' %}active{% endif %}"><i class="bi bi-building" aria-hidden="true"></i><span>Company Profile</span></a>
         </nav>
 

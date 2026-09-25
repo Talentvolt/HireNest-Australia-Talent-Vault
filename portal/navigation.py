@@ -91,7 +91,6 @@ def get_navigation_state(user):
             state['nav_account_links'] = [
                 {'label': 'Recruiter Dashboard', 'url': '/employers/dashboard/', 'icon': 'bi-speedometer2'},
                 {'label': 'Manage Jobs', 'url': '/employers/jobs/', 'icon': 'bi-briefcase'},
-                {'label': 'Find Candidates', 'url': '/employers/candidates/', 'icon': 'bi-people'},
                 {'label': 'Company Profile', 'url': '/employers/profile/', 'icon': 'bi-building'},
             ]
             return state

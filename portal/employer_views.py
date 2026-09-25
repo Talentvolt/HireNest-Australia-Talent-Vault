@@ -17,7 +17,6 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Q
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.crypto import constant_time_compare
@@ -236,34 +235,6 @@ class HirenestEmployerJobCreateView(HirenestEmployerRequiredMixin, View):
             'company': company,
             'screening_questions': screening_questions,
         })
-
-
-class HirenestEmployerCandidatesView(HirenestEmployerRequiredMixin, View):
-    """Search the HireNest candidate pool only."""
-
-    def get(self, request):
-        q = request.GET.get('q', '').strip()
-        location = request.GET.get('location', '').strip()
-
-        candidates = CandidateProfile.objects.select_related('user').order_by('-created_at')
-        if q:
-            candidates = candidates.filter(
-                Q(full_name__icontains=q)
-                | Q(current_designation__icontains=q)
-                | Q(department__icontains=q)
-                | Q(preferred_job_role__icontains=q)
-                | Q(skills__skill_name__icontains=q)
-            ).distinct()
-        if location:
-            candidates = candidates.filter(location__icontains=location)
-
-        context = {
-            'candidates': candidates[:50],
-            'q': q,
-            'location': location,
-            'total_candidates': candidates.count(),
-        }
-        return render(request, 'hirenest/employer_candidates.html', context)
 
 
 class HirenestEmployerProfileView(HirenestEmployerRequiredMixin, View):

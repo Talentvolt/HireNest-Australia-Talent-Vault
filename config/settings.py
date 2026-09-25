@@ -70,28 +70,40 @@ if DEBUG and '*' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('*')
 
 # CSRF Trusted Origins
+#
+# The HireNest canonical origins (apex + www, over both HTTP and HTTPS) are
+# always trusted. The HTTP variants are required so a form submitted while the
+# browser is still on http:// (during the http -> https redirect, or when a
+# reverse proxy reports X-Forwarded-Proto=https for an http request) is not
+# rejected with an intermittent 403. Environment variables can only ADD extra
+# origins (e.g. a temporary preview host); they can never remove the canonical
+# HireNest origins.
+_CANONICAL_CSRF_ORIGINS = [
+    'https://hirenest.com.au',
+    'https://www.hirenest.com.au',
+    'http://hirenest.com.au',
+    'http://www.hirenest.com.au',
+    'https://*.onrender.com',
+    'https://*.render.com',
+    # Local development origins (HireNest Australia runs on port 8002 locally)
+    'http://localhost',
+    'http://127.0.0.1',
+    'http://0.0.0.0',
+    'http://localhost:8002',
+    'http://127.0.0.1:8002',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5000',
+    'http://127.0.0.1:5000',
+]
+
 csrf_origins_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
-if csrf_origins_env:
-    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins_env.split(',') if origin.strip()]
-else:
-    CSRF_TRUSTED_ORIGINS = [
-        'https://hirenest.com.au',
-        'https://www.hirenest.com.au',
-        'https://*.onrender.com',
-        'https://*.render.com',
-        # Local development origins (HireNest Australia runs on port 8002 locally)
-        'http://localhost',
-        'http://127.0.0.1',
-        'http://0.0.0.0',
-        'http://localhost:8002',
-        'http://127.0.0.1:8002',
-        'http://localhost:8080',
-        'http://127.0.0.1:8080',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'http://localhost:5000',
-        'http://127.0.0.1:5000',
-    ]
+env_origins = [origin.strip() for origin in csrf_origins_env.split(',') if origin.strip()]
+CSRF_TRUSTED_ORIGINS = _CANONICAL_CSRF_ORIGINS + [
+    origin for origin in env_origins if origin not in _CANONICAL_CSRF_ORIGINS
+]
 
 if render_hostname:
     render_origin = f"https://{render_hostname}"
@@ -385,6 +397,7 @@ SESSION_COOKIE_NAME = 'hirenest_sessionid'
 SESSION_COOKIE_AGE = 1209600  # 2 weeks
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_SAVE_EVERY_REQUEST = False
 
 # Authentication backends
