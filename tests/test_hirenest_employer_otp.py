@@ -171,3 +171,78 @@ class HireNestEmployerOTPTests(TestCase):
             mail.outbox[0].subject,
             'Your HireNest Australia Employer Account Has Been Approved',
         )
+
+
+class HireNestEmployerAutoApprovalRuleTests(TestCase):
+    """Employer registration approval rule: gmail.com auto-approves, others PENDING."""
+
+    def setUp(self):
+        self.client = Client()
+        mail.outbox.clear()
+
+    def _register(self, email):
+        payload = dict(REGISTRATION_PAYLOAD, email=email)
+        return self.client.post('/employers/register/', data=payload, follow=False)
+
+    def _verify(self):
+        otp = _otp_from_outbox()
+        return self.client.post('/employers/verify-otp/', data={'otp': otp}, follow=False)
+
+    def test_verified_gmail_is_auto_approved(self):
+        register_resp = self._register('hiring@gmail.com')
+        self.assertEqual(register_resp.status_code, 302)
+        self.assertEqual(register_resp.url, '/employers/verify-otp/')
+
+        verify_resp = self._verify()
+        self.assertEqual(verify_resp.status_code, 302)
+        self.assertEqual(verify_resp.url, '/employers/login/')
+
+        employer = User.objects.filter(email='hiring@gmail.com').first()
+        self.assertIsNotNone(employer)
+        self.assertEqual(employer.recruiter_status, User.RecruiterStatus.ACTIVE)
+        self.assertTrue(employer.is_active)
+        self.assertTrue(employer.is_verified)
+
+    def test_verified_non_gmail_remains_pending(self):
+        register_resp = self._register('hiring@company.com.au')
+        self.assertEqual(register_resp.status_code, 302)
+        self.assertEqual(register_resp.url, '/employers/verify-otp/')
+
+        verify_resp = self._verify()
+        self.assertEqual(verify_resp.status_code, 302)
+        self.assertEqual(verify_resp.url, '/employers/registration-pending/')
+
+        employer = User.objects.filter(email='hiring@company.com.au').first()
+        self.assertIsNotNone(employer)
+        self.assertEqual(employer.recruiter_status, User.RecruiterStatus.PENDING)
+
+    def test_mixed_case_gmail_is_auto_approved(self):
+        register_resp = self._register('Hiring.Team@Gmail.com')
+        self.assertEqual(register_resp.status_code, 302)
+        self.assertEqual(register_resp.url, '/employers/verify-otp/')
+
+        verify_resp = self._verify()
+        self.assertEqual(verify_resp.status_code, 302)
+        self.assertEqual(verify_resp.url, '/employers/login/')
+
+        employer = User.objects.filter(email='hiring.team@gmail.com').first()
+        self.assertIsNotNone(employer)
+        self.assertEqual(employer.recruiter_status, User.RecruiterStatus.ACTIVE)
+
+    def test_existing_admin_approval_flow_still_works(self):
+        register_resp = self._register('hiring@company.com.au')
+        self.assertEqual(register_resp.status_code, 302)
+
+        verify_resp = self._verify()
+        self.assertEqual(verify_resp.status_code, 302)
+        self.assertEqual(verify_resp.url, '/employers/registration-pending/')
+
+        employer = User.objects.filter(email='hiring@company.com.au').first()
+        self.assertIsNotNone(employer)
+        self.assertEqual(employer.recruiter_status, User.RecruiterStatus.PENDING)
+
+        mail.outbox.clear()
+        ok, message = apply_employer_action(employer, 'approve')
+        self.assertTrue(ok)
+        employer.refresh_from_db()
+        self.assertEqual(employer.recruiter_status, User.RecruiterStatus.ACTIVE)

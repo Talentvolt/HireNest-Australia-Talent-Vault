@@ -15,6 +15,30 @@ from apps.companies.models import CompanyMember
 
 EMPLOYER_ROLES = (User.Role.RECRUITER, User.Role.COMPANY_ADMIN)
 
+# Email domains on this exact-match allowlist are auto-approved after OTP
+# verification. Everything else stays PENDING for TalentVault admin review.
+AUTO_APPROVED_EMAIL_DOMAIN = 'gmail.com'
+
+
+def email_domain(email):
+    """Return the lowercase domain of an email address, or '' if invalid."""
+    email = (email or '').strip().lower()
+    if '@' not in email:
+        return ''
+    return email.rsplit('@', 1)[1]
+
+
+def employer_initial_status(email):
+    """
+    Return the initial recruiter status for a newly verified employer.
+
+    A verified ``gmail.com`` address is approved automatically (ACTIVE). Every
+    other domain remains PENDING and requires TalentVault admin approval.
+    """
+    if email_domain(email) == AUTO_APPROVED_EMAIL_DOMAIN:
+        return User.RecruiterStatus.ACTIVE
+    return User.RecruiterStatus.PENDING
+
 
 def employer_status_message(status):
     """Return the user-facing message for a non-active employer status."""

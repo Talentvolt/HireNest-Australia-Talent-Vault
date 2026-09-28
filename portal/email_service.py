@@ -79,7 +79,7 @@ def send_employer_otp(email, otp):
         return False, "Failed to send verification code. Please try again."
 
 
-def send_admin_new_employer_email(user, company=None):
+def send_admin_new_employer_email(user, company=None, status='PENDING'):
     """
     Send notification email to HIRENEST_ADMIN_NOTIFICATION_EMAIL when a new
     employer registers on HireNest Australia.
@@ -101,9 +101,21 @@ def send_admin_new_employer_email(user, company=None):
     site_url = getattr(settings, 'SITE_URL', 'https://hirenest.com.au')
     approval_url = f"{site_url.rstrip('/')}/employers/approvals/"
 
+    status = (status or 'PENDING').strip().upper()
+    is_auto_approved = status == 'ACTIVE'
+
     subject = "New HireNest Australia Employer Registration"
+    if is_auto_approved:
+        intro = "A new employer has registered on HireNest Australia and was automatically approved (verified Gmail address)."
+        status_line = f"- Status: ACTIVE (Auto-approved)\n\n"
+        footer = f"Review HireNest Employer:\n{approval_url}\n\n"
+    else:
+        intro = "A new employer has registered on HireNest Australia and is awaiting approval."
+        status_line = f"- Status: PENDING\n\n"
+        footer = f"Review HireNest Employer:\n{approval_url}\n\n"
+
     message = (
-        f"A new employer has registered on HireNest Australia and is awaiting approval.\n\n"
+        f"{intro}\n\n"
         f"- Company / Organisation Name: {company_name}\n"
         f"- Recruiter / Contact Name: {contact_name}\n"
         f"- Official Work Email: {user.email}\n"
@@ -112,8 +124,8 @@ def send_admin_new_employer_email(user, company=None):
         f"- Australian HQ / Location: {location}\n"
         f"- Company Website: {website}\n"
         f"- Registration Date & Time: {reg_date}\n"
-        f"- Status: PENDING\n\n"
-        f"Review HireNest Employer:\n{approval_url}\n\n"
+        f"{status_line}"
+        f"{footer}"
         f"--- HireNest Australia Automated Notification ---"
     )
 

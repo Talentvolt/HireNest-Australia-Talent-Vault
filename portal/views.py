@@ -44,7 +44,7 @@ from .forms import (
     EmployerLoginForm,
     JobApplicationForm,
 )
-from .employer_service import employer_status_message
+from .employer_service import employer_initial_status, employer_status_message
 from .email_service import send_admin_new_employer_email, send_employer_otp
 
 logger = logging.getLogger(__name__)
@@ -868,9 +868,12 @@ class HirenestEmployerLandingView(View):
 
 def _create_pending_employer(data):
     """
-    Create a PENDING HireNest employer/recruiter record (Company + User +
-    CompanyMember) and notify the admin. Called only after email OTP
-    verification succeeds. Never auto-approves the employer.
+    Create a HireNest employer/recruiter record (Company + User + CompanyMember)
+    and notify the admin. Called only after email OTP verification succeeds.
+
+    A verified ``gmail.com`` address is approved automatically (ACTIVE). Every
+    other email domain remains PENDING until a TalentVault/HireNest admin
+    approves it.
     """
     org_name = data['org_name']
     email = data['email'].strip().lower()
@@ -879,6 +882,8 @@ def _create_pending_employer(data):
     website = data.get('website', '')
     location = data.get('location', 'Sydney NSW')
     password = data['password']
+
+    status = employer_initial_status(email)
 
     base_slug = slugify(org_name) or 'company'
     slug = base_slug
@@ -901,16 +906,17 @@ def _create_pending_employer(data):
             }
         )
 
-        # HireNest employer/recruiter user. Starts as PENDING and is NOT
-        # activated until a TalentVault/HireNest admin approves it.
+        # HireNest employer/recruiter user. gmail.com addresses are approved
+        # automatically; all other domains start PENDING and are not activated
+        # until a TalentVault/HireNest admin approves them.
         user = User.objects.create_user(
             email=email,
             password=password,
             phone_number=phone_number,
             role=User.Role.RECRUITER,
-            recruiter_status=User.RecruiterStatus.PENDING,
+            recruiter_status=status,
             is_active=True,
-            is_verified=False,
+            is_verified=(status == User.RecruiterStatus.ACTIVE),
         )
 
         CompanyMember.objects.create(
@@ -921,7 +927,7 @@ def _create_pending_employer(data):
         )
 
     try:
-        send_admin_new_employer_email(user, company)
+        send_admin_new_employer_email(user, company, status=status)
     except Exception:
         logger.exception("Error sending admin new employer email")
 
@@ -1068,7 +1074,7 @@ class HirenestEmployerOTPVerificationView(View):
         otp_record.save()
 
         try:
-            _create_pending_employer(pending)
+            employer = _create_pending_employer(pending)
         except Exception:
             logger.exception("Employer creation error after OTP verification")
             return render(request, self.template_name, self._context(email, error="Could not complete your registration. Please try again."))
@@ -1077,6 +1083,10 @@ class HirenestEmployerOTPVerificationView(View):
         request.session.pop('employer_registration', None)
         request.session.pop('employer_otp_email', None)
         request.session.pop('employer_otp_sent_at', None)
+
+        if employer.recruiter_status == User.RecruiterStatus.ACTIVE:
+            messages.success(request, "Your work email has been verified. Your employer account is active and you can now log in.")
+            return redirect('/employers/login/')
 
         messages.success(request, "Your work email has been verified. Your employer account is now awaiting approval.")
         return redirect('/employers/registration-pending/')
