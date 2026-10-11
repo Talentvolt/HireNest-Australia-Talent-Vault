@@ -6,6 +6,13 @@ from apps.candidates.models import CandidateProfile
 from apps.companies.models import Company
 from apps.jobs.models import Job
 from .services import AUSTRALIAN_CLASSIFICATIONS, AUSTRALIAN_STATES
+from .currency_data import (
+    CURRENCY_CHOICES,
+    SALARY_PERIOD_CHOICES,
+    WORK_RIGHTS_CHOICES,
+    DEFAULT_CURRENCY,
+    DEFAULT_SALARY_PERIOD,
+)
 
 AU_JOB_TYPE_CHOICES = [
     ('FULL_TIME', 'Full-time'),
@@ -194,17 +201,27 @@ class JobApplicationForm(forms.Form):
     first_name = forms.CharField(max_length=50, required=False, label="First name")
     last_name = forms.CharField(max_length=50, required=False, label="Last name")
     phone_number = forms.CharField(max_length=30, required=True, label="Mobile")
-    location = forms.CharField(max_length=100, required=False)
-    suburb = forms.CharField(max_length=80, required=False, label="Suburb")
-    state = forms.ChoiceField(choices=AU_STATE_CHOICES, required=False, label="State / Territory")
+    location = forms.CharField(max_length=100, required=False, label="Location")
     total_experience = forms.DecimalField(max_digits=4, decimal_places=1, required=False, initial=0.0)
     expected_salary = forms.DecimalField(max_digits=12, decimal_places=2, required=False)
+    expected_salary_currency = forms.ChoiceField(
+        choices=CURRENCY_CHOICES,
+        required=False,
+        initial=DEFAULT_CURRENCY,
+        label="Expected salary currency",
+    )
+    salary_period = forms.ChoiceField(
+        choices=SALARY_PERIOD_CHOICES,
+        required=False,
+        initial=DEFAULT_SALARY_PERIOD,
+        label="Salary period",
+    )
     notice_period = forms.IntegerField(required=False, initial=30)
     is_immediate_joiner = forms.BooleanField(required=False, label="I'm available to start immediately")
     resume_file = forms.FileField(required=False)
     cover_letter = forms.CharField(widget=forms.Textarea, required=False)
     linkedin_url = forms.URLField(required=False, label="LinkedIn / professional profile")
-    work_rights = forms.ChoiceField(choices=CITIZENSHIP_CHOICES, required=False, label="Work rights in Australia")
+    work_rights = forms.ChoiceField(choices=WORK_RIGHTS_CHOICES, required=False, label="Work authorisation")
     privacy_consent = forms.BooleanField(required=False, label="Privacy acknowledgement")
 
     def clean(self):
@@ -219,13 +236,8 @@ class JobApplicationForm(forms.Form):
         if not full_name:
             self.add_error('first_name', 'Please enter your first and last name.')
 
-        suburb = (cleaned_data.get('suburb') or '').strip()
-        state = cleaned_data.get('state') or ''
         location = (cleaned_data.get('location') or '').strip()
-        if suburb or state:
-            location = ' '.join(part for part in [suburb, state] if part)
-            cleaned_data['location'] = location
         if not location:
-            self.add_error('suburb', 'Please enter your suburb and state/territory.')
+            self.add_error('location', 'Please enter your location.')
 
         return cleaned_data

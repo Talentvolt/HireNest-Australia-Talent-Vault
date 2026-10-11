@@ -46,6 +46,12 @@ from .job_service import (
     serialize_job_queryset,
     update_admin_job,
 )
+from .application_service import (
+    filter_applications,
+    get_hirenest_applications_queryset,
+    serialize_application,
+    serialize_application_queryset,
+)
 
 
 EMPLOYER_ROLES = (User.Role.RECRUITER, User.Role.COMPANY_ADMIN)
@@ -491,3 +497,49 @@ class HirenestAdminJobsAPIView(View):
         title = job.title
         job.delete()
         return JsonResponse({'status': 'ok', 'message': f"Job '{title}' deleted."})
+
+
+# ==============================================================================
+# SECURE SERVER-TO-SERVER ADMIN APPLICATIONS API (TalentVault Admin Portal)
+# ==============================================================================
+@method_decorator(csrf_exempt, name='dispatch')
+class HirenestAdminApplicationsAPIView(View):
+    """
+    Secure JSON API for HireNest candidate applications.
+
+    GET /api/admin/applications/?status=&job=&q=  -> list applications
+    GET /api/admin/applications/<uuid>/           -> application detail
+
+    Only the shared server-side secret or an authenticated HireNest super-admin
+    session can read these records. The resume URL is a short-lived presigned
+    URL generated server-side; no secret is ever returned to the browser.
+    """
+
+    def _forbidden(self):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    def get(self, request, application_id=None):
+        if not _is_hirenest_admin(request):
+            return self._forbidden()
+
+        if application_id is not None:
+            application = get_object_or_404(
+                get_hirenest_applications_queryset(), pk=application_id
+            )
+            return JsonResponse({
+                'source': 'hirenest',
+                'application': serialize_application(application, include_resume_url=True),
+            })
+
+        queryset = filter_applications(
+            get_hirenest_applications_queryset(),
+            status=request.GET.get('status'),
+            job_id=request.GET.get('job'),
+            query=request.GET.get('q'),
+        )
+
+        return JsonResponse({
+            'source': 'hirenest',
+            'count': queryset.count(),
+            'applications': serialize_application_queryset(queryset),
+        })

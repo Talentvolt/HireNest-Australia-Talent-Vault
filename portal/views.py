@@ -45,6 +45,7 @@ from .forms import (
     JobApplicationForm,
 )
 from .employer_service import employer_initial_status, employer_status_message
+from .currency_data import DEFAULT_CURRENCY, DEFAULT_SALARY_PERIOD
 from .email_service import send_admin_new_employer_email, send_employer_otp
 
 logger = logging.getLogger(__name__)
@@ -375,6 +376,10 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
             location = form.cleaned_data['location']
             total_experience = form.cleaned_data.get('total_experience') or Decimal('0.0')
             expected_salary = form.cleaned_data.get('expected_salary')
+            expected_salary_currency = (
+                form.cleaned_data.get('expected_salary_currency') or DEFAULT_CURRENCY
+            )
+            salary_period = form.cleaned_data.get('salary_period') or DEFAULT_SALARY_PERIOD
             notice_period = form.cleaned_data.get('notice_period') or 30
             cover_letter = form.cleaned_data.get('cover_letter', '')
             resume_file = form.cleaned_data.get('resume_file')
@@ -427,6 +432,9 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
                 'screening_answers': screening_answers,
                 'mobile_number': phone_number,
                 'is_immediate_joiner': is_immediate_joiner,
+                'expected_ctc': expected_salary,
+                'expected_salary_currency': expected_salary_currency,
+                'salary_period': salary_period,
             }
             if linkedin_url:
                 application_defaults['linkedin_url'] = linkedin_url

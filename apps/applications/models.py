@@ -125,6 +125,8 @@ class Application(BaseAppModel):
     relevant_experience = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     current_ctc = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     expected_ctc = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    expected_salary_currency = models.CharField(max_length=10, blank=True, default='AUD')
+    salary_period = models.CharField(max_length=20, blank=True, default='ANNUALLY')
     notice_period = models.PositiveIntegerField(null=True, blank=True, help_text="Notice period in days")
     is_immediate_joiner = models.BooleanField(default=False)
     preferred_location = models.CharField(max_length=255, blank=True, null=True)

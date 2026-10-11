@@ -60,43 +60,26 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-bold small text-secondary">Suburb <span class="text-danger">*</span></label>
-                                <input type="text" name="suburb" class="form-control" list="hn-locations" value="{{ form.suburb.value|default_if_none:profile.location }}" placeholder="e.g. Sydney" required>
+                                <label class="form-label fw-bold small text-secondary">Location <span class="text-danger">*</span></label>
+                                <input type="text" name="location" class="form-control" list="hn-locations" value="{{ form.location.value|default_if_none:profile.location }}" placeholder="e.g. Sydney, Australia" required>
                                 <datalist id="hn-locations">
                                     {% for loc in locations %}<option value="{{ loc }}"></option>{% endfor %}
                                 </datalist>
                             </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold small text-secondary">State / Territory <span class="text-danger">*</span></label>
-                                <select name="state" class="form-select">
-                                    <option value="">Select state/territory</option>
-                                    <option value="NSW" {% if form.state.value == 'NSW' %}selected{% endif %}>New South Wales (NSW)</option>
-                                    <option value="VIC" {% if form.state.value == 'VIC' %}selected{% endif %}>Victoria (VIC)</option>
-                                    <option value="QLD" {% if form.state.value == 'QLD' %}selected{% endif %}>Queensland (QLD)</option>
-                                    <option value="WA" {% if form.state.value == 'WA' %}selected{% endif %}>Western Australia (WA)</option>
-                                    <option value="SA" {% if form.state.value == 'SA' %}selected{% endif %}>South Australia (SA)</option>
-                                    <option value="TAS" {% if form.state.value == 'TAS' %}selected{% endif %}>Tasmania (TAS)</option>
-                                    <option value="ACT" {% if form.state.value == 'ACT' %}selected{% endif %}>Australian Capital Territory (ACT)</option>
-                                    <option value="NT" {% if form.state.value == 'NT' %}selected{% endif %}>Northern Territory (NT)</option>
-                                </select>
-                            </div>
                         </div>
 
-                        <h4 class="fs-5 fw-bold text-dark mb-3">2. Work Rights & Availability</h4>
+                        <h4 class="fs-5 fw-bold text-dark mb-3">2. Work Authorisation & Availability</h4>
                         
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
-                                <label class="form-label fw-bold small text-secondary">Work Rights in Australia <span class="text-danger">*</span></label>
+                                <label class="form-label fw-bold small text-secondary">Work Authorisation <span class="text-danger">*</span></label>
                                 <select name="work_rights" class="form-select">
-                                    <option value="">Select your work rights</option>
-                                    <option value="Australian Citizen" {% if form.work_rights.value == 'Australian Citizen' or profile.citizenship == 'Australian Citizen' %}selected{% endif %}>Australian Citizen</option>
-                                    <option value="Australian Permanent Resident" {% if form.work_rights.value == 'Australian Permanent Resident' or profile.citizenship == 'Australian Permanent Resident' %}selected{% endif %}>Australian Permanent Resident</option>
-                                    <option value="New Zealand Citizen" {% if form.work_rights.value == 'New Zealand Citizen' or profile.citizenship == 'New Zealand Citizen' %}selected{% endif %}>New Zealand Citizen</option>
-                                    <option value="Temporary Work Visa (Subclass 482)" {% if form.work_rights.value == 'Temporary Work Visa (Subclass 482)' or profile.citizenship == 'Temporary Work Visa (Subclass 482)' %}selected{% endif %}>Temporary Work Visa (Subclass 482)</option>
-                                    <option value="Student Visa (Subclass 500)" {% if form.work_rights.value == 'Student Visa (Subclass 500)' or profile.citizenship == 'Student Visa (Subclass 500)' %}selected{% endif %}>Student Visa (Subclass 500)</option>
-                                    <option value="Working Holiday Visa (Subclass 417/462)" {% if form.work_rights.value == 'Working Holiday Visa (Subclass 417/462)' or profile.citizenship == 'Working Holiday Visa (Subclass 417/462)' %}selected{% endif %}>Working Holiday Visa (Subclass 417/462)</option>
-                                    <option value="Other / Requires Sponsorship" {% if form.work_rights.value == 'Other / Requires Sponsorship' or profile.citizenship == 'Other / Requires Sponsorship' %}selected{% endif %}>Other / Requires Sponsorship</option>
+                                    <option value="">Select your work authorisation</option>
+                                    <option value="Citizen" {% if form.work_rights.value == 'Citizen' or profile.citizenship == 'Citizen' %}selected{% endif %}>Citizen of the job's country</option>
+                                    <option value="Permanent Resident" {% if form.work_rights.value == 'Permanent Resident' or profile.citizenship == 'Permanent Resident' %}selected{% endif %}>Permanent resident of the job's country</option>
+                                    <option value="Work Visa / Permit" {% if form.work_rights.value == 'Work Visa / Permit' or profile.citizenship == 'Work Visa / Permit' %}selected{% endif %}>Hold a valid work visa / permit for the job's country</option>
+                                    <option value="Requires Sponsorship" {% if form.work_rights.value == 'Requires Sponsorship' or profile.citizenship == 'Requires Sponsorship' %}selected{% endif %}>Require visa sponsorship</option>
+                                    <option value="Other" {% if form.work_rights.value == 'Other' or profile.citizenship == 'Other' %}selected{% endif %}>Other</option>
                                 </select>
                             </div>
 
@@ -111,12 +94,30 @@
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-bold small text-secondary">Expected Salary (AUD / yr)</label>
+                                <label class="form-label fw-bold small text-secondary">Expected Salary</label>
                                 <input type="number" name="expected_salary" class="form-control" value="{{ profile.expected_salary|default:'' }}" placeholder="e.g. 120000">
                             </div>
 
-                            <div class="col-md-6">
-                                <div class="form-check mt-4 pt-2">
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small text-secondary">Salary Currency</label>
+                                <select name="expected_salary_currency" class="form-select">
+                                    {% for value, label in form.expected_salary_currency.field.choices %}
+                                    <option value="{{ value }}" {% if form.expected_salary_currency.value == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold small text-secondary">Salary Period</label>
+                                <select name="salary_period" class="form-select">
+                                    {% for value, label in form.salary_period.field.choices %}
+                                    <option value="{{ value }}" {% if form.salary_period.value == value %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-md-12">
+                                <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="is_immediate_joiner" id="immediate-joiner" value="1">
                                     <label class="form-check-label fw-semibold small text-secondary" for="immediate-joiner">I'm available to start immediately</label>
                                 </div>
@@ -146,7 +147,7 @@
 
                         <div class="mb-4">
                             <label class="form-label fw-bold small text-secondary">Cover Letter (Optional)</label>
-                            <textarea name="cover_letter" class="form-control" rows="4" placeholder="Briefly highlight why you are a great fit for this Australian role...">{{ form.cover_letter.value|default_if_none:'' }}</textarea>
+                            <textarea name="cover_letter" class="form-control" rows="4" placeholder="Briefly highlight why you are a great fit for this role...">{{ form.cover_letter.value|default_if_none:'' }}</textarea>
                         </div>
 
                         <div class="mb-4">
