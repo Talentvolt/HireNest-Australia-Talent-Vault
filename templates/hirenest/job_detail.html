@@ -51,9 +51,19 @@
                             >
                                 <i class="bi {% if is_saved %}bi-heart-fill text-danger{% else %}bi-heart{% endif %} fs-6"></i>
                             </button>
-                            <button type="button" class="btn btn-outline-secondary btn-sm hn-share-btn p-2 px-2.5" data-url="{{ share_url }}" title="Share this job">
+                            <button type="button" class="btn btn-outline-secondary btn-sm hn-share-job p-2 px-2.5" data-share-url="{{ share_url }}" data-share-title="{{ job.title }}" title="Share this job">
                                 <i class="bi bi-share-fill fs-6"></i>
                             </button>
+                            <div class="dropdown">
+                                <button type="button" class="btn btn-outline-secondary btn-sm p-2 px-2.5" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Share options" title="More share options">
+                                    <i class="bi bi-three-dots-vertical fs-6"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                                    <li><button type="button" class="dropdown-item hn-share-job" data-share-url="{{ share_url }}" data-share-title="{{ job.title }}"><i class="bi bi-share me-2"></i>Share Job</button></li>
+                                    <li><button type="button" class="dropdown-item hn-copy-job-link" data-share-url="{{ share_url }}"><i class="bi bi-link-45deg me-2"></i>Copy Link</button></li>
+                                    <li><button type="button" class="dropdown-item hn-whatsapp-job" data-share-url="{{ share_url }}" data-share-title="{{ job.title }}"><i class="bi bi-whatsapp me-2"></i>WhatsApp</button></li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
 

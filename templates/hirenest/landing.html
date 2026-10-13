@@ -359,6 +359,16 @@
                         <div class="hn-job-footer pt-2 border-top d-flex justify-content-between align-items-center">
                             <span class="text-muted small"><i class="bi bi-clock me-1"></i>Posted {{ job.created_at|timesince }} ago</span>
                             <div class="d-flex gap-2">
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-sm btn-light border" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Share job" title="Share job">
+                                        <i class="bi bi-share"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                                        <li><button type="button" class="dropdown-item hn-share-job" data-share-url="{{ job.public_share_url }}" data-share-title="{{ job.title }}"><i class="bi bi-share me-2"></i>Share Job</button></li>
+                                        <li><button type="button" class="dropdown-item hn-copy-job-link" data-share-url="{{ job.public_share_url }}"><i class="bi bi-link-45deg me-2"></i>Copy Link</button></li>
+                                        <li><button type="button" class="dropdown-item hn-whatsapp-job" data-share-url="{{ job.public_share_url }}" data-share-title="{{ job.title }}"><i class="bi bi-whatsapp me-2"></i>WhatsApp</button></li>
+                                    </ul>
+                                </div>
                                 <a href="/jobs/{{ job.id }}/" class="btn btn-sm btn-light border">Details</a>
                                 <a href="/jobs/{{ job.id }}/apply/" class="btn btn-sm hn-btn-primary px-3">Apply</a>
                             </div>

@@ -22,6 +22,7 @@
                     <th class="py-2 small text-uppercase">Type</th>
                     <th class="py-2 small text-uppercase">Status</th>
                     <th class="py-2 small text-uppercase">Posted</th>
+                    <th class="px-3 py-2 text-end small text-uppercase">Share</th>
                 </tr>
             </thead>
             <tbody>
@@ -32,10 +33,24 @@
                         <td class="text-muted small">{{ job.get_job_type_display }}</td>
                         <td><span class="badge {% if job.status == 'ACTIVE' %}bg-success{% else %}bg-secondary{% endif %}">{{ job.status }}</span></td>
                         <td class="text-muted small">{{ job.created_at|date:"M d, Y" }}</td>
+                        <td class="px-3 text-end">
+                            {% if job.status == 'ACTIVE' %}
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="dropdown" data-bs-boundary="viewport" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" aria-label="Share job">
+                                        <i class="bi bi-share-fill"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                                        <li><button type="button" class="dropdown-item hn-share-job" data-share-url="{{ job.public_share_url }}" data-share-title="{{ job.title }}"><i class="bi bi-share me-2"></i>Share Job</button></li>
+                                        <li><button type="button" class="dropdown-item hn-copy-job-link" data-share-url="{{ job.public_share_url }}"><i class="bi bi-link-45deg me-2"></i>Copy Link</button></li>
+                                        <li><button type="button" class="dropdown-item hn-whatsapp-job" data-share-url="{{ job.public_share_url }}" data-share-title="{{ job.title }}"><i class="bi bi-whatsapp me-2"></i>WhatsApp</button></li>
+                                    </ul>
+                                </div>
+                            {% endif %}
+                        </td>
                     </tr>
                 {% empty %}
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-5">
+                        <td colspan="6" class="text-center text-muted py-5">
                             <i class="bi bi-inbox fs-3 d-block mb-2"></i>No jobs posted yet.
                         </td>
                     </tr>

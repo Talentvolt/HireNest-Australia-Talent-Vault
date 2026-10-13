@@ -172,6 +172,15 @@ class Job(BaseAppModel):
     @property
     def client_name(self):
         return self.display_company
+
+    @property
+    def public_share_url(self):
+        base = (
+            getattr(settings, 'HIRENEST_PUBLIC_BASE_URL', '').rstrip('/')
+            or getattr(settings, 'SITE_URL', '').rstrip('/')
+            or 'https://hirenest.com.au'
+        )
+        return f"{base}/jobs/{self.id}/"
     
     class Meta:
         verbose_name = _('job')

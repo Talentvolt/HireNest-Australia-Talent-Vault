@@ -294,7 +294,7 @@ class HirenestJobDetailView(View):
             'jd_file': jd_file,
             'jd_file_name': jd_file_name,
             'is_pdf': is_pdf,
-            'share_url': request.build_absolute_uri(),
+            'share_url': job.public_share_url,
         }
         return render(request, 'hirenest/job_detail.html', context)
 

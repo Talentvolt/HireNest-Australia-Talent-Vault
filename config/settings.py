@@ -213,6 +213,11 @@ SITE_URL = os.environ.get('SITE_URL', 'https://hirenest.com.au').rstrip('/')
 SITE_DOMAIN = urlparse(SITE_URL).netloc or 'hirenest.com.au'
 SITE_NAME = os.environ.get('SITE_NAME', 'HireNest Australia')
 
+# Canonical public website base used to build permanent job share URLs. This is
+# intentionally independent of SITE_URL (which points at localhost during local
+# development) so share links always resolve to the production domain.
+HIRENEST_PUBLIC_BASE_URL = os.environ.get('HIRENEST_PUBLIC_BASE_URL', 'https://hirenest.com.au').rstrip('/')
+
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 

@@ -33,6 +33,95 @@ function getUserRole() {
     return document.body.getAttribute('data-user-role') || 'GUEST';
 }
 
+function showHireNestToast(message, tone) {
+    let container = document.getElementById('hn-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'hn-toast-container';
+        container.className = 'position-fixed bottom-0 end-0 p-3';
+        container.style.zIndex = '1080';
+        document.body.appendChild(container);
+    }
+
+    const bgClass = (tone === 'danger' || tone === 'error') ? 'bg-danger' : 'bg-success';
+    const icon = (tone === 'danger' || tone === 'error') ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill';
+
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast align-items-center text-white ${bgClass} border-0 show shadow-lg mb-2`;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
+    toastEl.setAttribute('aria-atomic', 'true');
+    toastEl.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body d-flex align-items-center gap-2 fw-semibold">
+                <i class="bi ${icon} fs-5"></i>
+                <span>${message}</span>
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" aria-label="Close" onclick="this.closest('.toast').remove()"></button>
+        </div>
+    `;
+    container.appendChild(toastEl);
+    setTimeout(function () {
+        toastEl.classList.remove('show');
+        setTimeout(function () { toastEl.remove(); }, 400);
+    }, 4000);
+}
+
+function hnCopyToClipboard(text) {
+    return new Promise(function (resolve, reject) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { resolve(true); }).catch(function () {
+                hnLegacyCopy(text, resolve, reject);
+            });
+        } else {
+            hnLegacyCopy(text, resolve, reject);
+        }
+    });
+}
+
+function hnLegacyCopy(text, resolve, reject) {
+    try {
+        const input = document.createElement('textarea');
+        input.value = text;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.top = '-1000px';
+        document.body.appendChild(input);
+        input.select();
+        input.setSelectionRange(0, input.value.length);
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        resolve(true);
+    } catch (err) {
+        reject(err);
+    }
+}
+
+window.hnShareJob = function (url, title) {
+    if (navigator.share) {
+        navigator.share({ title: title || 'Job opening', url: url }).catch(function () {});
+        return;
+    }
+    hnCopyToClipboard(url).then(function () {
+        showHireNestToast('Link copied to clipboard', 'success');
+    }).catch(function () {
+        showHireNestToast('Unable to copy link', 'danger');
+    });
+};
+
+window.hnCopyJobLink = function (url) {
+    hnCopyToClipboard(url).then(function () {
+        showHireNestToast('Link copied to clipboard', 'success');
+    }).catch(function () {
+        showHireNestToast('Unable to copy link', 'danger');
+    });
+};
+
+window.hnShareWhatsApp = function (url, title) {
+    const text = title ? `${title}\n${url}` : url;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+};
+
 /**
  * Opens the candidate "Continue with Google" authentication modal.
  * @param {string} mode - kept for backwards compatibility ('login', 'register', 'options')
@@ -126,5 +215,36 @@ document.addEventListener('DOMContentLoaded', function () {
             }, { once: true });
             instance.hide();
         });
+    });
+
+    // --------------------------------------------------------------------------
+    // 4. Job Sharing & Copy Link (Share Job / Copy Link / WhatsApp)
+    // --------------------------------------------------------------------------
+    document.addEventListener('click', function (e) {
+        const shareBtn = e.target.closest('.hn-share-job');
+        if (shareBtn) {
+            e.preventDefault();
+            const url = shareBtn.getAttribute('data-share-url') || window.location.href;
+            const title = shareBtn.getAttribute('data-share-title') || document.title;
+            window.hnShareJob(url, title);
+            return;
+        }
+
+        const copyBtn = e.target.closest('.hn-copy-job-link');
+        if (copyBtn) {
+            e.preventDefault();
+            const url = copyBtn.getAttribute('data-share-url') || window.location.href;
+            window.hnCopyJobLink(url);
+            return;
+        }
+
+        const whatsappBtn = e.target.closest('.hn-whatsapp-job');
+        if (whatsappBtn) {
+            e.preventDefault();
+            const url = whatsappBtn.getAttribute('data-share-url') || window.location.href;
+            const title = whatsappBtn.getAttribute('data-share-title') || document.title;
+            window.hnShareWhatsApp(url, title);
+            return;
+        }
     });
 });
