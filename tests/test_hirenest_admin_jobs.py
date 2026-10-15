@@ -340,3 +340,142 @@ class HireNestAdminJobPostingTests(TestCase):
         qs = get_admin_jobs_queryset()
         self.assertIn(admin_job, qs)
         self.assertNotIn(employer_job, qs)
+
+    # ------------------------------------------------------------------
+    # 11. Currency regression tests: USD / AUD creation, update & reload
+    # ------------------------------------------------------------------
+    def test_admin_can_create_usd_job_and_persists_in_db_and_api(self):
+        payload = dict(self.payload)
+        payload['currency'] = 'USD'
+        payload['country'] = 'United States'
+        payload['location'] = 'San Francisco, CA, United States'
+        payload['min_salary'] = '140000'
+        payload['max_salary'] = '180000'
+
+        response = self.client.post(
+            ADMIN_JOBS_URL,
+            data=json.dumps(payload),
+            content_type='application/json',
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body['job']['currency'], 'USD')
+
+        job = Job.objects.get(pk=body['job']['id'])
+        self.assertEqual(job.currency, 'USD')
+
+        # Verify currency survives a reload via GET
+        detail_resp = self.client.get(
+            f"{ADMIN_JOBS_URL}{job.id}/",
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        )
+        self.assertEqual(detail_resp.status_code, 200)
+        self.assertEqual(detail_resp.json()['job']['currency'], 'USD')
+
+        # Verify jobs list also returns USD
+        list_resp = self.client.get(
+            ADMIN_JOBS_URL,
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        )
+        self.assertEqual(list_resp.status_code, 200)
+        usd_jobs = [j for j in list_resp.json()['jobs'] if j['id'] == str(job.id)]
+        self.assertEqual(len(usd_jobs), 1)
+        self.assertEqual(usd_jobs[0]['currency'], 'USD')
+
+    def test_admin_can_update_job_currency_from_aud_to_usd_and_reload(self):
+        # 1. Create job with AUD
+        created = self.client.post(
+            ADMIN_JOBS_URL,
+            data=json.dumps(self.payload),
+            content_type='application/json',
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        ).json()['job']
+        job_id = created['id']
+        detail_url = f'{ADMIN_JOBS_URL}{job_id}/'
+
+        job = Job.objects.get(pk=job_id)
+        self.assertEqual(job.currency, 'AUD')
+
+        # 2. Update to USD
+        update_resp = self.client.put(
+            detail_url,
+            data=json.dumps({'currency': 'USD'}),
+            content_type='application/json',
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        )
+        self.assertEqual(update_resp.status_code, 200)
+        self.assertEqual(update_resp.json()['job']['currency'], 'USD')
+
+        # 3. Verify in DB
+        job.refresh_from_db()
+        self.assertEqual(job.currency, 'USD')
+
+        # 4. Partial update of another field must NOT silently revert USD to AUD
+        partial_resp = self.client.put(
+            detail_url,
+            data=json.dumps({'title': 'Senior Staff Data Engineer'}),
+            content_type='application/json',
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        )
+        self.assertEqual(partial_resp.status_code, 200)
+        self.assertEqual(partial_resp.json()['job']['currency'], 'USD')
+        job.refresh_from_db()
+        self.assertEqual(job.currency, 'USD')
+
+        # 5. Reloading via GET still returns USD
+        reload_resp = self.client.get(detail_url, HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY)
+        self.assertEqual(reload_resp.status_code, 200)
+        self.assertEqual(reload_resp.json()['job']['currency'], 'USD')
+
+    def test_create_job_defaults_currency_by_country_usa_and_australia(self):
+        # USA country defaults to USD
+        usa_payload = dict(self.payload)
+        usa_payload.pop('currency', None)
+        usa_payload['country'] = 'United States'
+        usa_payload['location'] = 'New York, NY, USA'
+        usa_resp = self.client.post(
+            ADMIN_JOBS_URL,
+            data=json.dumps(usa_payload),
+            content_type='application/json',
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        )
+        self.assertEqual(usa_resp.status_code, 201)
+        self.assertEqual(usa_resp.json()['job']['currency'], 'USD')
+
+        # Australia country defaults to AUD
+        au_payload = dict(self.payload)
+        au_payload.pop('currency', None)
+        au_payload['country'] = 'Australia'
+        au_payload['location'] = 'Melbourne, VIC, Australia'
+        au_resp = self.client.post(
+            ADMIN_JOBS_URL,
+            data=json.dumps(au_payload),
+            content_type='application/json',
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        )
+        self.assertEqual(au_resp.status_code, 201)
+        self.assertEqual(au_resp.json()['job']['currency'], 'AUD')
+
+    def test_negotiable_salary_does_not_show_misleading_currency_label(self):
+        # Admin creates job with no min/max salary
+        negotiable_payload = dict(self.payload)
+        negotiable_payload.pop('min_salary', None)
+        negotiable_payload.pop('max_salary', None)
+        negotiable_payload['currency'] = 'USD'
+        response = self.client.post(
+            ADMIN_JOBS_URL,
+            data=json.dumps(negotiable_payload),
+            content_type='application/json',
+            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY,
+        )
+        self.assertEqual(response.status_code, 201)
+        job_id = response.json()['job']['id']
+        job = Job.objects.get(pk=job_id)
+        self.assertEqual(job.formatted_salary_display, 'Salary negotiable')
+
+        # Public detail view should show "Salary" and not "Annual Salary (AUD)"
+        detail_view = self.client.get(f'/jobs/{job_id}/')
+        self.assertEqual(detail_view.status_code, 200)
+        self.assertContains(detail_view, 'Salary negotiable')
+        self.assertNotContains(detail_view, 'Annual Salary (AUD)')

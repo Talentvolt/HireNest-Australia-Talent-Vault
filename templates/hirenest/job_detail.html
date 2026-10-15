@@ -74,7 +74,9 @@
                             <div class="fw-bold text-dark"><i class="bi bi-geo-alt-fill text-danger me-1"></i>{{ job.location }}</div>
                         </div>
                         <div class="col-sm-4 col-6">
-                            <div class="text-muted small">Annual Salary (AUD)</div>
+                            <div class="text-muted small">
+                                {% if not job.min_salary and not job.max_salary or "negotiable" in job.formatted_salary_display|lower %}Salary{% elif job.currency %}Annual Salary ({{ job.currency }}){% else %}Annual Salary{% endif %}
+                            </div>
                             <div class="fw-bold text-success">{{ job.formatted_salary_display }}</div>
                         </div>
                         <div class="col-sm-4 col-12">

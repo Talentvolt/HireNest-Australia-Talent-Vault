@@ -265,7 +265,7 @@
                             {% else %}
                                 <span class="hn-badge-tag">{{ job.get_work_mode_display }}</span>
                             {% endif %}
-                            <span class="hn-salary-tag fw-bold text-success"><i class="bi bi-currency-dollar me-0.5"></i>{{ job.formatted_salary_display }}</span>
+                            <span class="hn-salary-tag fw-bold text-success">{% if not job.min_salary and not job.max_salary or "negotiable" in job.formatted_salary_display|lower %}<i class="bi bi-cash me-0.5"></i>{% else %}<i class="bi bi-currency-dollar me-0.5"></i>{% endif %}{{ job.formatted_salary_display }}</span>
                             {% if job.id in applied_job_ids %}
                                 <span class="badge bg-success text-white py-1 px-2.5 rounded-pill"><i class="bi bi-check-circle me-1"></i>Applied</span>
                             {% endif %}

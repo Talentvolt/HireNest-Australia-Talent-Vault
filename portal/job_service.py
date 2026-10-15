@@ -15,6 +15,11 @@ from django.utils.text import slugify
 
 from apps.companies.models import Company
 from apps.jobs.models import Job
+from .currency_data import (
+    CURRENCY_CHOICES,
+    DEFAULT_CURRENCY,
+    default_currency_for_country,
+)
 
 
 ADMIN_JOB_STATUSES = {choice for choice, _ in Job.JobStatus.choices}
@@ -183,6 +188,23 @@ def _validate_job_payload(payload, require_all=True):
     if 'is_remote' in payload:
         cleaned['is_remote'] = bool(payload.get('is_remote'))
 
+    if 'currency' in payload:
+        raw_currency = (payload.get('currency') or '').strip().upper()
+        if raw_currency:
+            valid_currencies = {code for code, _ in CURRENCY_CHOICES}
+            if raw_currency in valid_currencies or len(raw_currency) == 3:
+                cleaned['currency'] = raw_currency
+            else:
+                errors.append(f'Invalid currency: {raw_currency}.')
+        else:
+            cleaned['currency'] = default_currency_for_country(
+                payload.get('country'), payload.get('location')
+            )
+    elif require_all:
+        cleaned['currency'] = default_currency_for_country(
+            payload.get('country'), payload.get('location')
+        )
+
     return cleaned, errors
 
 
@@ -190,18 +212,21 @@ def create_admin_job(payload):
     """
     Create a HireNest admin-owned job posting.
 
-    Returns ``(job, errors)``. Admin postings are always AUD and owned by the
-    admin (``source=ADMIN``); they are never attributed to an external employer.
+    Returns ``(job, errors)``. Explicit currency is preserved; if unspecified,
+    sensible country-based defaults are applied (USA -> USD, Australia -> AUD).
     """
     cleaned, errors = _validate_job_payload(payload or {}, require_all=True)
     if errors:
         return None, errors
 
     company = get_or_create_company(cleaned.pop('company_name', ''))
+    currency = cleaned.get('currency') or default_currency_for_country(
+        payload.get('country'), cleaned.get('location')
+    )
 
     job = Job(
         company=company,
-        currency='AUD',
+        currency=currency,
         source=Job.JobSource.ADMIN,
         created_by=None,
         updated_by=None,
@@ -243,8 +268,10 @@ def update_admin_job(job, payload):
     for field, value in cleaned.items():
         setattr(job, field, value)
 
-    # Admin postings are always AUD and remain admin-owned.
-    job.currency = 'AUD'
+    # If currency was not provided in an update payload, preserve existing job.currency
+    if 'currency' not in cleaned and not job.currency:
+        job.currency = default_currency_for_country(payload.get('country'), job.location)
+
     job.source = Job.JobSource.ADMIN
     job.save()
     return job, []

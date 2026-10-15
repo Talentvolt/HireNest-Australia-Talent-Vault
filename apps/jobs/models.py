@@ -136,24 +136,31 @@ class Job(BaseAppModel):
     @property
     def formatted_salary_display(self):
         if not self.min_salary and not self.max_salary:
-            return "Salary negotiable" if self.is_australia_job or self.currency == 'AUD' else "Not Specified"
+            return "Salary negotiable" if self.currency != 'INR' or self.is_australia_job else "Not Specified"
         
-        if self.is_australia_job or self.currency == 'AUD':
+        if self.currency != 'INR' or self.is_australia_job:
+            symbol = '$'
+            if self.currency and self.currency not in ('AUD', 'USD'):
+                try:
+                    from portal.currency_data import CURRENCY_SYMBOLS
+                    symbol = CURRENCY_SYMBOLS.get(self.currency, self.currency)
+                except Exception:
+                    symbol = '$'
             if self.min_salary and self.max_salary:
                 if self.min_salary >= 1000:
-                    return f"${int(self.min_salary):,} - ${int(self.max_salary):,} / year"
+                    return f"{symbol}{int(self.min_salary):,} - {symbol}{int(self.max_salary):,} / year"
                 else:
-                    return f"${self.min_salary:.2f} - ${self.max_salary:.2f} / hr"
+                    return f"{symbol}{self.min_salary:.2f} - {symbol}{self.max_salary:.2f} / hr"
             elif self.min_salary:
                 if self.min_salary >= 1000:
-                    return f"${int(self.min_salary):,} / year"
+                    return f"{symbol}{int(self.min_salary):,} / year"
                 else:
-                    return f"${self.min_salary:.2f} / hr"
+                    return f"{symbol}{self.min_salary:.2f} / hr"
             elif self.max_salary:
                 if self.max_salary >= 1000:
-                    return f"Up to ${int(self.max_salary):,} / year"
+                    return f"Up to {symbol}{int(self.max_salary):,} / year"
                 else:
-                    return f"Up to ${self.max_salary:.2f} / hr"
+                    return f"Up to {symbol}{self.max_salary:.2f} / hr"
         return self.salary_range_lpa
 
     @property
