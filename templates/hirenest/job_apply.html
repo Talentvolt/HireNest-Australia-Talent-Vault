@@ -186,6 +186,9 @@
                             </div>
                         </div>
 
+                        <!-- Cloudflare Turnstile (server-verified anti-bot challenge) -->
+                        {% include "hirenest/_turnstile_widget.html" with action="job_apply" %}
+
                         <div class="d-flex align-items-center justify-content-between pt-3 border-top">
                             <a href="/jobs/{{ job.id }}/" class="btn btn-outline-secondary">Cancel</a>
                             <button type="submit" class="btn hn-btn-primary btn-lg fw-bold px-5">

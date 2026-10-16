@@ -47,8 +47,34 @@ from .forms import (
 from .employer_service import employer_initial_status, employer_status_message
 from .currency_data import DEFAULT_CURRENCY, DEFAULT_SALARY_PERIOD
 from .email_service import send_admin_new_employer_email, send_employer_otp
+from .anti_bot import (
+    require_turnstile,
+    turnstile_error_message,
+    get_client_ip,
+    is_rate_limited,
+    reset_rate_limit,
+    EMPLOYER_LOGIN_MAX_ATTEMPTS,
+    EMPLOYER_LOGIN_PERIOD,
+    EMPLOYER_REGISTER_MAX_ATTEMPTS,
+    EMPLOYER_REGISTER_PERIOD,
+    OTP_VERIFY_MAX_ATTEMPTS,
+    OTP_VERIFY_PERIOD,
+    OTP_RESEND_MAX_ATTEMPTS,
+    OTP_RESEND_PERIOD,
+    JOB_APPLY_MAX_ATTEMPTS,
+    JOB_APPLY_PERIOD,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _google_login_url(next_url=''):
+    """Build the Google OAuth start URL, preserving an optional ``next`` target."""
+    url = '/accounts/google/login/'
+    if next_url:
+        from django.utils.http import urlencode
+        url = f"{url}?{urlencode({'next': next_url})}"
+    return url
 
 
 # ==============================================================================
@@ -361,6 +387,24 @@ class HirenestJobApplyView(LoginRequiredMixin, View):
         job = get_object_or_404(get_australian_jobs_queryset(), pk=pk)
         profile, _ = CandidateProfile.objects.get_or_create(user=request.user)
 
+        turnstile_error = require_turnstile(request, 'job_apply')
+        if turnstile_error:
+            messages.error(request, turnstile_error_message(turnstile_error))
+            return redirect(f'/jobs/{job.pk}/apply/')
+
+        limited, wait = is_rate_limited(
+            request,
+            f"job_apply_{request.user.pk}",
+            max_attempts=JOB_APPLY_MAX_ATTEMPTS,
+            period=JOB_APPLY_PERIOD,
+        )
+        if limited:
+            messages.error(
+                request,
+                f"You are submitting applications too quickly. Please try again in {wait} second(s).",
+            )
+            return redirect(f'/jobs/{job.pk}/apply/')
+
         screening_questions = _screening_questions_display(job, request.POST)
         missing_required = [
             q['question'] for q in screening_questions
@@ -651,8 +695,17 @@ class HirenestCandidateRegisterView(View):
         })
 
     def post(self, request):
-        # No email/password or OTP registration. Always start Google OAuth.
-        return redirect('/accounts/google/login/')
+        # No email/password or OTP registration. A Turnstile challenge gates the
+        # Google OAuth handshake before it starts; the token is verified
+        # server-side before redirecting into the OAuth flow.
+        turnstile_error = require_turnstile(request, 'candidate_register')
+        if turnstile_error:
+            return render(request, 'hirenest/candidate_register.html', {
+                'locations': POPULAR_AU_LOCATIONS,
+                'next': request.POST.get('next', request.GET.get('next', '')),
+                'error': turnstile_error_message(turnstile_error),
+            })
+        return redirect(_google_login_url(request.POST.get('next') or request.GET.get('next')))
 
 
 class HirenestCandidateLoginView(View):
@@ -666,7 +719,14 @@ class HirenestCandidateLoginView(View):
         return render(request, 'hirenest/candidate_login.html', {'next': next_url})
 
     def post(self, request):
-        return redirect('/accounts/google/login/')
+        # Gate the Google OAuth handshake with server-side Turnstile verification.
+        turnstile_error = require_turnstile(request, 'candidate_login')
+        if turnstile_error:
+            return render(request, 'hirenest/candidate_login.html', {
+                'next': request.POST.get('next', request.GET.get('next', '')),
+                'error': turnstile_error_message(turnstile_error),
+            })
+        return redirect(_google_login_url(request.POST.get('next') or request.GET.get('next')))
 
 
 class HirenestCandidateLogoutView(View):
@@ -942,6 +1002,21 @@ def _create_pending_employer(data):
     return user
 
 
+def _employer_register_context(request, errors=None):
+    """Rebuild the employer registration context with user-entered values."""
+    return {
+        'errors': errors or [],
+        'locations': POPULAR_AU_LOCATIONS,
+        'org_name': request.POST.get('org_name', ''),
+        'email': request.POST.get('email', ''),
+        'phone_number': request.POST.get('phone_number', ''),
+        'hiring_type': request.POST.get('hiring_type', 'organization'),
+        'industry': request.POST.get('industry', ''),
+        'website': request.POST.get('website', ''),
+        'location': request.POST.get('location', 'Sydney NSW'),
+    }
+
+
 class HirenestEmployerRegisterView(View):
     """
     Employer registration on HireNest Australia.
@@ -956,6 +1031,30 @@ class HirenestEmployerRegisterView(View):
         return render(request, 'hirenest/employer_register.html', {'locations': POPULAR_AU_LOCATIONS})
 
     def post(self, request):
+        turnstile_error = require_turnstile(request, 'employer_register')
+        if turnstile_error:
+            return render(
+                request,
+                'hirenest/employer_register.html',
+                _employer_register_context(request, [turnstile_error_message(turnstile_error)]),
+            )
+
+        limited, wait = is_rate_limited(
+            request,
+            f"employer_register_{get_client_ip(request)}",
+            max_attempts=EMPLOYER_REGISTER_MAX_ATTEMPTS,
+            period=EMPLOYER_REGISTER_PERIOD,
+        )
+        if limited:
+            return render(
+                request,
+                'hirenest/employer_register.html',
+                _employer_register_context(
+                    request,
+                    [f"Too many registration attempts. Please try again in {wait} second(s)."],
+                ),
+            )
+
         form = EmployerRegistrationForm(request.POST)
         if form.is_valid():
             email = form.cleaned_data['email'].strip().lower()
@@ -985,17 +1084,12 @@ class HirenestEmployerRegisterView(View):
             success, msg = send_employer_otp(email, otp)
             if not success:
                 form.add_error(None, f"Email verification delivery failed: {msg}. Please check your email address and try again.")
-                return render(request, 'hirenest/employer_register.html', {
-                    'errors': [err for err_list in form.errors.values() for err in err_list],
-                    'locations': POPULAR_AU_LOCATIONS,
-                    'org_name': request.POST.get('org_name', ''),
-                    'email': request.POST.get('email', ''),
-                    'phone_number': request.POST.get('phone_number', ''),
-                    'hiring_type': request.POST.get('hiring_type', 'organization'),
-                    'industry': request.POST.get('industry', ''),
-                    'website': request.POST.get('website', ''),
-                    'location': request.POST.get('location', 'Sydney NSW'),
-                })
+                errors = [err for err_list in form.errors.values() for err in err_list]
+                return render(
+                    request,
+                    'hirenest/employer_register.html',
+                    _employer_register_context(request, errors),
+                )
 
             # Hold the registration data in the session until the OTP is verified.
             request.session['employer_registration'] = {
@@ -1015,17 +1109,11 @@ class HirenestEmployerRegisterView(View):
             return redirect('/employers/verify-otp/')
 
         errors = [err for err_list in form.errors.values() for err in err_list]
-        return render(request, 'hirenest/employer_register.html', {
-            'errors': errors,
-            'locations': POPULAR_AU_LOCATIONS,
-            'org_name': request.POST.get('org_name', ''),
-            'email': request.POST.get('email', ''),
-            'phone_number': request.POST.get('phone_number', ''),
-            'hiring_type': request.POST.get('hiring_type', 'organization'),
-            'industry': request.POST.get('industry', ''),
-            'website': request.POST.get('website', ''),
-            'location': request.POST.get('location', 'Sydney NSW'),
-        })
+        return render(
+            request,
+            'hirenest/employer_register.html',
+            _employer_register_context(request, errors),
+        )
 
 
 class HirenestEmployerOTPVerificationView(View):
@@ -1055,6 +1143,30 @@ class HirenestEmployerOTPVerificationView(View):
         if not email or not pending:
             messages.warning(request, "No active employer registration session found. Please register again.")
             return redirect('/employers/register/')
+
+        turnstile_error = require_turnstile(request, 'employer_otp_verify')
+        if turnstile_error:
+            return render(
+                request,
+                self.template_name,
+                self._context(email, error=turnstile_error_message(turnstile_error)),
+            )
+
+        limited, wait = is_rate_limited(
+            request,
+            f"employer_otp_verify_{email}",
+            max_attempts=OTP_VERIFY_MAX_ATTEMPTS,
+            period=OTP_VERIFY_PERIOD,
+        )
+        if limited:
+            return render(
+                request,
+                self.template_name,
+                self._context(
+                    email,
+                    error=f"Too many verification attempts. Please try again in {wait} second(s).",
+                ),
+            )
 
         otp_entered = request.POST.get('otp', '').strip()
 
@@ -1113,6 +1225,21 @@ class HirenestEmployerOTPResendView(View):
             return redirect('/employers/register/')
 
         context = {'email': email, 'masked_email': mask_email(email)}
+
+        turnstile_error = require_turnstile(request, 'employer_otp_resend')
+        if turnstile_error:
+            context['error'] = turnstile_error_message(turnstile_error)
+            return render(request, self.template_name, context)
+
+        limited, wait = is_rate_limited(
+            request,
+            f"employer_otp_resend_{email}",
+            max_attempts=OTP_RESEND_MAX_ATTEMPTS,
+            period=OTP_RESEND_PERIOD,
+        )
+        if limited:
+            context['error'] = f"Too many resend requests. Please try again in {wait} second(s)."
+            return render(request, self.template_name, context)
 
         now = timezone.now()
         last_sent = request.session.get('employer_otp_sent_at')
@@ -1176,6 +1303,27 @@ class HirenestEmployerLoginView(View):
         return render(request, 'hirenest/employer_login.html')
 
     def post(self, request):
+        turnstile_error = require_turnstile(request, 'employer_login')
+        if turnstile_error:
+            return render(request, 'hirenest/employer_login.html', {
+                'error': turnstile_error_message(turnstile_error),
+                'email': request.POST.get('email', ''),
+            })
+
+        raw_email = (request.POST.get('email') or '').strip().lower()
+        rate_key = f"employer_login_{raw_email or get_client_ip(request)}"
+        limited, wait = is_rate_limited(
+            request,
+            rate_key,
+            max_attempts=EMPLOYER_LOGIN_MAX_ATTEMPTS,
+            period=EMPLOYER_LOGIN_PERIOD,
+        )
+        if limited:
+            return render(request, 'hirenest/employer_login.html', {
+                'error': f"Too many login attempts. Please try again in {wait} second(s).",
+                'email': raw_email,
+            })
+
         form = EmployerLoginForm(request.POST)
         if form.is_valid():
             email = form.cleaned_data['email']
@@ -1217,6 +1365,7 @@ class HirenestEmployerLoginView(View):
                     })
 
             login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            reset_rate_limit(request, rate_key)
             if not remember_me:
                 request.session.set_expiry(0)
 

@@ -39,6 +39,13 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # Cloudflare Turnstile anti-bot protection (server-side verification).
+      # The site key is public; the secret key must NEVER be exposed to clients.
+      # Both are required for Turnstile verification to be enforced.
+      - key: TURNSTILE_SITE_KEY
+        sync: false
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
       # HireNest uses its OWN database connection string. It must NOT reuse
       # TalentVault's DATABASE_URL.
       - key: HIRENEST_DATABASE_URL

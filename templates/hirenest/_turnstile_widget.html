@@ -1,0 +1,18 @@
+{% comment %}
+Cloudflare Turnstile widget. Rendered only when Turnstile is enabled for the
+environment (see config.context_processors.turnstile). The token produced here
+is verified server-side by portal.anti_bot.require_turnstile; the widget alone
+is never trusted.
+
+Usage:
+    {% include "hirenest/_turnstile_widget.html" with action="employer_register" %}
+{% endcomment %}
+{% if turnstile_enabled %}
+    <div class="cf-turnstile hn-turnstile mb-3" data-sitekey="{{ turnstile_site_key }}" data-action="{{ action }}" data-theme="light"></div>
+    <noscript>
+        <div class="alert alert-warning small py-2.5 rounded-3 mb-3">
+            JavaScript is required to complete the security verification. Please enable JavaScript and try again.
+        </div>
+    </noscript>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}

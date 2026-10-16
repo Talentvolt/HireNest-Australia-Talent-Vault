@@ -103,6 +103,9 @@
                 </label>
             </div>
 
+            <!-- Cloudflare Turnstile (server-verified anti-bot challenge) -->
+            {% include "hirenest/_turnstile_widget.html" with action="employer_register" %}
+
             <!-- Submit Button -->
             <button type="submit" class="btn hn-btn-primary w-100 py-2.5 fw-bold justify-content-center mb-3">
                 Register Employer Account

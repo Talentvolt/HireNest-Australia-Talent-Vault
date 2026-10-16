@@ -42,6 +42,11 @@
                 required
                 autofocus
             >
+            <!-- Cloudflare Turnstile (server-verified anti-bot challenge) -->
+            <div class="mt-3">
+                {% include "hirenest/_turnstile_widget.html" with action="employer_otp_verify" %}
+            </div>
+
             <button type="submit" class="btn hn-btn-primary w-100 py-2.5 fw-bold justify-content-center mt-3">
                 <i class="bi bi-shield-check me-1"></i>Verify &amp; Continue
             </button>
@@ -49,6 +54,7 @@
 
         <form method="POST" action="/employers/verify-otp/resend/" class="mt-3">
             {% csrf_token %}
+            {% include "hirenest/_turnstile_widget.html" with action="employer_otp_resend" %}
             <button type="submit" class="btn btn-link w-100 text-primary small fw-semibold text-decoration-none">
                 Didn't receive the code? <span class="text-decoration-underline">Resend verification code</span>
             </button>

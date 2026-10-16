@@ -165,6 +165,27 @@ HIRENEST_ADMIN_API_KEY = os.environ.get('HIRENEST_ADMIN_API_KEY', '').strip()
 HIRENEST_ADMIN_API_HEADER = 'HTTP_X_HIRENEST_ADMIN_KEY'
 
 # ==============================================================================
+# Cloudflare Turnstile anti-bot protection.
+#
+# Turnstile tokens are ALWAYS verified server-side against Cloudflare's
+# siteverify endpoint before any form is processed, any OTP email is sent, or
+# any account is created. The client-side widget alone is never trusted.
+#
+# The site/secret keys are read from the environment only (Render environment
+# variables) and are never hardcoded or committed. Turnstile verification is
+# active only when BOTH keys are configured, so local development and the
+# automated test suite run unchanged without weakening production protection.
+# ==============================================================================
+TURNSTILE_SITE_KEY = os.environ.get('TURNSTILE_SITE_KEY', '').strip()
+TURNSTILE_SECRET_KEY = os.environ.get('TURNSTILE_SECRET_KEY', '').strip()
+TURNSTILE_ENABLED = bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+TURNSTILE_TIMEOUT = float(os.environ.get('TURNSTILE_TIMEOUT', '10') or 10)
+TURNSTILE_SITEVERIFY_URL = os.environ.get(
+    'TURNSTILE_SITEVERIFY_URL',
+    'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+)
+
+# ==============================================================================
 # Application Definition
 # ==============================================================================
 INSTALLED_APPS = [
@@ -252,6 +273,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'portal.navigation.hirenest_navigation',
+                'config.context_processors.turnstile',
             ],
         },
     },
