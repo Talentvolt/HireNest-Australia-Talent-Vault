@@ -913,6 +913,17 @@ body.hirenest-body {
   color: var(--hn-text-muted);
 }
 
+/* --- Share dropdown: raise the open card above adjacent job cards so the
+       menu is never clipped or covered by neighbouring cards. The card's hover
+       transform creates a stacking context, so the menu must escape it. --- */
+.hn-job-card:has(.dropdown.show) {
+  z-index: 1030;
+}
+
+.hn-job-card .dropdown-menu {
+  z-index: 1030;
+}
+
 .hn-save-btn {
   background: transparent;
   border: none;
