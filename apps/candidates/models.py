@@ -94,6 +94,9 @@ class CandidateProfile(BaseAppModel):
     is_shortlisted = models.BooleanField(default=False, db_index=True)
     is_saved_for_later = models.BooleanField(default=False, db_index=True)
     source = models.CharField(max_length=50, default='PORTAL_REGISTRATION', db_index=True)
+    country_of_residence = models.CharField(max_length=100, blank=True, default='')
+    work_rights_visa_status = models.CharField(max_length=100, blank=True, default='')
+    relocation_availability = models.BooleanField(default=False)
 
     # Diversity & Affirmative Hiring (Explicit Self-Declared Candidate Data Only)
     gender = models.CharField(
@@ -429,6 +432,7 @@ class Experience(BaseAppModel):
     """
     profile = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='experiences')
     company_name = models.CharField(max_length=255)
+    employer_country = models.CharField(max_length=100, blank=True, default='')
     designation = models.CharField(max_length=255)
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
@@ -461,6 +465,7 @@ class Education(BaseAppModel):
 
     profile = models.ForeignKey(CandidateProfile, on_delete=models.CASCADE, related_name='educations')
     institution = models.CharField(max_length=255, db_index=True)
+    institution_country = models.CharField(max_length=100, blank=True, default='')
     degree = models.CharField(max_length=255, db_index=True)
     field_of_study = models.CharField(max_length=255, blank=True, null=True)
     specialization = models.CharField(max_length=255, blank=True, default='')

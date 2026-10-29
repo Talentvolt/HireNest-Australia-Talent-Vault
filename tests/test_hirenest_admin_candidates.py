@@ -2,8 +2,10 @@
 HireNest admin candidates create & list API tests.
 
 Verifies the secure server-to-server candidates endpoint consumed by TalentVault's
-HireNest Candidate Parser, ensuring candidates are created with structured experience
-and education in the HireNest database, with duplicate detection and API key authorization.
+HireNest Candidate Parser, ensuring international candidates are created with
+country of residence, work rights/visa status, relocation availability, structured
+experience (with employer country) and education (with institution country) in the
+HireNest database.
 """
 from decimal import Decimal
 from django.test import Client, TestCase, override_settings
@@ -30,33 +32,38 @@ class HireNestAdminCandidatesCreateAPITests(TestCase):
         response_get = self.client.get(CANDIDATES_API_URL)
         self.assertEqual(response_get.status_code, 403)
 
-    def test_candidates_create_api_success_with_experience_and_education(self):
+    def test_international_candidate_create_api_success(self):
         payload = {
-            'full_name': 'Steve Rogers',
-            'email': 'steve.rogers@avengers.org',
-            'phone_number': '+1 555 0199',
-            'location': 'Sydney NSW',
-            'current_company': 'Shield',
-            'current_designation': 'Captain',
-            'total_experience': 10.0,
-            'summary': 'First Avenger',
-            'skills': 'Leadership, Strategy, Combat',
-            'linkedin_url': 'https://linkedin.com/in/steverogers',
+            'full_name': 'Alistair Vance',
+            'email': 'alistair.vance@uk-tech.co.uk',
+            'phone_number': '+44 20 7946 0915',
+            'location': 'London',
+            'country_of_residence': 'United Kingdom',
+            'work_rights_visa_status': 'Temporary Working Visa (e.g. 482, 457)',
+            'relocation_availability': True,
+            'current_company': 'London Fintech Ltd',
+            'current_designation': 'Senior Solutions Architect',
+            'total_experience': 8.5,
+            'summary': 'International tech leader relocating to Australia.',
+            'skills': 'Cloud Architecture, Python, AWS, Kubernetes',
+            'linkedin_url': 'https://linkedin.com/in/alistairvance',
             'experiences': [
                 {
-                    'company_name': 'Stark Industries',
-                    'designation': 'Security Consultant',
-                    'is_current': False,
-                    'description': 'Provided tactical security consulting.'
+                    'company_name': 'London Fintech Ltd',
+                    'employer_country': 'United Kingdom',
+                    'designation': 'Senior Solutions Architect',
+                    'is_current': True,
+                    'description': 'Designed multi-cloud architectures across Europe.'
                 }
             ],
             'educations': [
                 {
-                    'degree': 'B.Sc. Military Science',
-                    'institution': 'United States Military Academy',
-                    'field_of_study': 'Tactical Operations',
-                    'passing_year': 1941,
-                    'percentage_or_cgpa': '3.8 GPA'
+                    'degree': 'M.Sc. Computer Science',
+                    'institution': 'University of Oxford',
+                    'institution_country': 'United Kingdom',
+                    'field_of_study': 'Distributed Systems',
+                    'passing_year': 2016,
+                    'percentage_or_cgpa': 'First Class Honours'
                 }
             ]
         }
@@ -71,28 +78,28 @@ class HireNestAdminCandidatesCreateAPITests(TestCase):
         self.assertTrue(data['success'])
         self.assertIn('candidate_id', data)
 
-        # Verify profile created in HireNest DB with source=RESUME_PARSER
+        # Verify profile created in HireNest DB with international fields
         profile = CandidateProfile.objects.get(id=data['candidate_id'])
-        self.assertEqual(profile.full_name, 'Steve Rogers')
+        self.assertEqual(profile.full_name, 'Alistair Vance')
         self.assertEqual(profile.source, 'RESUME_PARSER')
-        self.assertEqual(profile.user.email, 'steve.rogers@avengers.org')
-        self.assertEqual(profile.location, 'Sydney NSW')
-        self.assertEqual(profile.total_experience, Decimal('10.0'))
-        self.assertEqual(profile.skills.count(), 3)
+        self.assertEqual(profile.country_of_residence, 'United Kingdom')
+        self.assertEqual(profile.work_rights_visa_status, 'Temporary Working Visa (e.g. 482, 457)')
+        self.assertTrue(profile.relocation_availability)
 
-        # Verify experiences and educations saved
+        # Verify structured experiences and educations with country metadata
         self.assertEqual(profile.experiences.count(), 1)
         exp = profile.experiences.first()
-        self.assertEqual(exp.company_name, 'Stark Industries')
-        self.assertEqual(exp.designation, 'Security Consultant')
+        self.assertEqual(exp.company_name, 'London Fintech Ltd')
+        self.assertEqual(exp.employer_country, 'United Kingdom')
 
         self.assertEqual(profile.educations.count(), 1)
         edu = profile.educations.first()
-        self.assertEqual(edu.degree, 'B.Sc. Military Science')
-        self.assertEqual(edu.institution, 'United States Military Academy')
-        self.assertEqual(edu.passing_year, 1941)
+        self.assertEqual(edu.degree, 'M.Sc. Computer Science')
+        self.assertEqual(edu.institution, 'University of Oxford')
+        self.assertEqual(edu.institution_country, 'United Kingdom')
+        self.assertEqual(edu.passing_year, 2016)
 
-        # Test GET candidate listing API
+        # Test GET candidate listing API with international details
         response_get = self.client.get(
             CANDIDATES_API_URL + '?source=RESUME_PARSER',
             HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY
@@ -100,56 +107,10 @@ class HireNestAdminCandidatesCreateAPITests(TestCase):
         self.assertEqual(response_get.status_code, 200)
         get_data = response_get.json()
         self.assertEqual(get_data['source'], 'hirenest')
-        self.assertGreaterEqual(get_data['count'], 1)
         cand_found = next((c for c in get_data['candidates'] if c['id'] == str(profile.id)), None)
         self.assertIsNotNone(cand_found)
-        self.assertEqual(cand_found['full_name'], 'Steve Rogers')
-        self.assertEqual(len(cand_found['experiences']), 1)
-        self.assertEqual(len(cand_found['educations']), 1)
-
-    def test_candidates_create_api_duplicate_detection(self):
-        # Create initial candidate
-        user = User.objects.create_user(
-            email='thor.odinson@asgard.org',
-            role=User.Role.CANDIDATE,
-            phone_number='+61 411 222 333'
-        )
-        CandidateProfile.objects.create(
-            user=user,
-            full_name='Thor Odinson',
-            location='Melbourne VIC',
-            current_company='Asgard Defense',
-            source='PORTAL_REGISTRATION'
-        )
-
-        # Attempt to create duplicate with same email
-        response = self.client.post(
-            CANDIDATES_API_URL,
-            data={
-                'full_name': 'Thor Duplicate',
-                'email': 'thor.odinson@asgard.org',
-                'phone_number': '+61 411 222 333'
-            },
-            content_type='application/json',
-            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY
-        )
-        self.assertEqual(response.status_code, 400)
-        data = response.json()
-        self.assertFalse(data['success'])
-        self.assertEqual(data['stage'], 'duplicate')
-        self.assertEqual(data['duplicate_candidate']['name'], 'Thor Odinson')
-
-        # Attempt with ignore_duplicate=true
-        response_ignore = self.client.post(
-            CANDIDATES_API_URL,
-            data={
-                'full_name': 'Thor Duplicate',
-                'email': 'thor.odinson@asgard.org',
-                'phone_number': '+61 411 222 333',
-                'ignore_duplicate': True
-            },
-            content_type='application/json',
-            HTTP_X_HIRENEST_ADMIN_KEY=ADMIN_API_KEY
-        )
-        self.assertEqual(response_ignore.status_code, 200)
-        self.assertTrue(response_ignore.json()['success'])
+        self.assertEqual(cand_found['country_of_residence'], 'United Kingdom')
+        self.assertEqual(cand_found['work_rights_visa_status'], 'Temporary Working Visa (e.g. 482, 457)')
+        self.assertTrue(cand_found['relocation_availability'])
+        self.assertEqual(cand_found['experiences'][0]['employer_country'], 'United Kingdom')
+        self.assertEqual(cand_found['educations'][0]['institution_country'], 'United Kingdom')

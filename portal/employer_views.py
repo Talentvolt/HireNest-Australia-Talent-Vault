@@ -575,7 +575,8 @@ class HirenestAdminCandidatesCreateAPIView(View):
                 Q(full_name__icontains=query) |
                 Q(user__email__icontains=query) |
                 Q(location__icontains=query) |
-                Q(current_company__icontains=query)
+                Q(current_company__icontains=query) |
+                Q(country_of_residence__icontains=query)
             )
 
         candidates_data = []
@@ -586,6 +587,9 @@ class HirenestAdminCandidatesCreateAPIView(View):
                 "email": p.user.email if p.user else "",
                 "phone_number": p.user.phone_number if p.user and p.user.phone_number else "",
                 "location": p.location or "",
+                "country_of_residence": p.country_of_residence or "",
+                "work_rights_visa_status": p.work_rights_visa_status or "",
+                "relocation_availability": p.relocation_availability,
                 "current_company": p.current_company or "",
                 "current_designation": p.current_designation or "",
                 "total_experience": float(p.total_experience or 0.0),
@@ -597,6 +601,7 @@ class HirenestAdminCandidatesCreateAPIView(View):
                 "experiences": [
                     {
                         "company_name": e.company_name,
+                        "employer_country": e.employer_country,
                         "designation": e.designation,
                         "start_date": e.start_date.isoformat() if e.start_date else "",
                         "end_date": e.end_date.isoformat() if e.end_date else "",
@@ -609,6 +614,7 @@ class HirenestAdminCandidatesCreateAPIView(View):
                     {
                         "degree": ed.degree,
                         "institution": ed.institution,
+                        "institution_country": ed.institution_country,
                         "field_of_study": ed.field_of_study,
                         "passing_year": ed.passing_year,
                         "percentage_or_cgpa": ed.percentage_or_cgpa,
@@ -692,7 +698,10 @@ class HirenestAdminCandidatesCreateAPIView(View):
                     current_company=(data.get('current_company') or '').strip(),
                     current_designation=(data.get('current_designation') or '').strip(),
                     total_experience=float(data.get('total_experience') or 0.0),
-                    location=(data.get('location') or 'Australia').strip(),
+                    location=(data.get('location') or '').strip(),
+                    country_of_residence=(data.get('country_of_residence') or 'Australia').strip(),
+                    work_rights_visa_status=(data.get('work_rights_visa_status') or '').strip(),
+                    relocation_availability=str(data.get('relocation_availability', 'false')).lower() in ('true', '1', 'yes'),
                     summary=(data.get('summary') or '').strip(),
                     linkedin_url=(data.get('linkedin_url') or '').strip() or None,
                     portfolio_url=(data.get('portfolio_url') or '').strip() or None,
@@ -743,6 +752,7 @@ class HirenestAdminCandidatesCreateAPIView(View):
                                 Experience.objects.create(
                                     profile=profile,
                                     company_name=comp or 'Company',
+                                    employer_country=(exp.get('employer_country') or '').strip(),
                                     designation=desig or 'Professional',
                                     is_current=bool(exp.get('is_current', False)),
                                     description=(exp.get('description') or '').strip()
@@ -770,6 +780,7 @@ class HirenestAdminCandidatesCreateAPIView(View):
                                     profile=profile,
                                     degree=deg or 'Degree',
                                     institution=inst or 'Institution',
+                                    institution_country=(ed.get('institution_country') or '').strip(),
                                     field_of_study=(ed.get('field_of_study') or '').strip() or None,
                                     passing_year=py_int,
                                     percentage_or_cgpa=(ed.get('percentage_or_cgpa') or '').strip() or None
