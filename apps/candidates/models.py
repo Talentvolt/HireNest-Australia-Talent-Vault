@@ -93,6 +93,7 @@ class CandidateProfile(BaseAppModel):
     )
     is_shortlisted = models.BooleanField(default=False, db_index=True)
     is_saved_for_later = models.BooleanField(default=False, db_index=True)
+    source = models.CharField(max_length=50, default='PORTAL_REGISTRATION', db_index=True)
 
     # Diversity & Affirmative Hiring (Explicit Self-Declared Candidate Data Only)
     gender = models.CharField(

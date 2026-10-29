@@ -550,13 +550,78 @@ class HirenestAdminApplicationsAPIView(View):
 @method_decorator(csrf_exempt, name='dispatch')
 class HirenestAdminCandidatesCreateAPIView(View):
     """
-    Secure JSON API for creating candidate profiles in the HireNest database only
-    (consumed by TalentVault Admin Portal via HireNest Candidate Parser).
+    Secure JSON API for creating and listing candidate profiles in the HireNest database only
+    (consumed by TalentVault Admin Portal via HireNest Candidate Parser and Candidates view).
 
-    POST /api/admin/candidates/ -> create candidate profile
+    GET /api/admin/candidates/ -> list candidate profiles (filtered by source=RESUME_PARSER or all)
+    POST /api/admin/candidates/ -> create candidate profile with structured experience and education
     """
     def _forbidden(self):
         return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    def get(self, request):
+        if not _is_hirenest_admin(request):
+            return self._forbidden()
+
+        from apps.candidates.models import CandidateProfile
+        source_filter = request.GET.get('source', '').strip()
+        query = request.GET.get('q', '').strip()
+
+        qs = CandidateProfile.objects.select_related('user').prefetch_related('skills', 'experiences', 'educations').all()
+        if source_filter:
+            qs = qs.filter(source__iexact=source_filter)
+        if query:
+            qs = qs.filter(
+                Q(full_name__icontains=query) |
+                Q(user__email__icontains=query) |
+                Q(location__icontains=query) |
+                Q(current_company__icontains=query)
+            )
+
+        candidates_data = []
+        for p in qs.order_by('-created_at'):
+            candidates_data.append({
+                "id": str(p.id),
+                "full_name": p.full_name or "",
+                "email": p.user.email if p.user else "",
+                "phone_number": p.user.phone_number if p.user and p.user.phone_number else "",
+                "location": p.location or "",
+                "current_company": p.current_company or "",
+                "current_designation": p.current_designation or "",
+                "total_experience": float(p.total_experience or 0.0),
+                "summary": p.summary or "",
+                "source": p.source or "PORTAL_REGISTRATION",
+                "ats_score": p.ats_score or 0,
+                "created_at": p.created_at.isoformat() if p.created_at else "",
+                "skills": [s.skill_name for s in p.skills.all()],
+                "experiences": [
+                    {
+                        "company_name": e.company_name,
+                        "designation": e.designation,
+                        "start_date": e.start_date.isoformat() if e.start_date else "",
+                        "end_date": e.end_date.isoformat() if e.end_date else "",
+                        "is_current": e.is_current,
+                        "description": e.description,
+                    }
+                    for e in p.experiences.all()
+                ],
+                "educations": [
+                    {
+                        "degree": ed.degree,
+                        "institution": ed.institution,
+                        "field_of_study": ed.field_of_study,
+                        "passing_year": ed.passing_year,
+                        "percentage_or_cgpa": ed.percentage_or_cgpa,
+                    }
+                    for ed in p.educations.all()
+                ],
+            })
+
+        return JsonResponse({
+            "source": "hirenest",
+            "count": len(candidates_data),
+            "candidates": candidates_data
+        })
 
     def post(self, request):
         if not _is_hirenest_admin(request):
@@ -579,7 +644,7 @@ class HirenestAdminCandidatesCreateAPIView(View):
             return JsonResponse({'success': False, 'message': 'Email address is required.'}, status=400)
 
         # Duplicate check in HireNest DB
-        from apps.candidates.models import CandidateProfile, CandidateSkill
+        from apps.candidates.models import CandidateProfile, CandidateSkill, Experience, Education
         existing_user = None
         if phone:
             existing_user = User.objects.filter(Q(email=email) | Q(phone_number=phone)).first()
@@ -632,6 +697,7 @@ class HirenestAdminCandidatesCreateAPIView(View):
                     linkedin_url=(data.get('linkedin_url') or '').strip() or None,
                     portfolio_url=(data.get('portfolio_url') or '').strip() or None,
                     notice_period=int(data.get('notice_period') or 30),
+                    source='RESUME_PARSER',
                 )
 
                 curr_sal = data.get('current_salary')
@@ -649,6 +715,7 @@ class HirenestAdminCandidatesCreateAPIView(View):
                         pass
                 profile.save()
 
+                # Save skills
                 skills = data.get('skills')
                 if skills:
                     if isinstance(skills, str):
@@ -659,6 +726,54 @@ class HirenestAdminCandidatesCreateAPIView(View):
                         skill_list = []
                     for s in skill_list:
                         CandidateSkill.objects.get_or_create(profile=profile, skill_name=s[:100])
+
+                # Save structured experiences
+                experiences = data.get('experiences')
+                if isinstance(experiences, str):
+                    try:
+                        experiences = json.loads(experiences)
+                    except Exception:
+                        experiences = []
+                if isinstance(experiences, list):
+                    for exp in experiences:
+                        if isinstance(exp, dict):
+                            comp = (exp.get('company_name') or exp.get('company') or '').strip()
+                            desig = (exp.get('designation') or exp.get('title') or '').strip()
+                            if comp or desig:
+                                Experience.objects.create(
+                                    profile=profile,
+                                    company_name=comp or 'Company',
+                                    designation=desig or 'Professional',
+                                    is_current=bool(exp.get('is_current', False)),
+                                    description=(exp.get('description') or '').strip()
+                                )
+
+                # Save structured educations
+                educations = data.get('educations')
+                if isinstance(educations, str):
+                    try:
+                        educations = json.loads(educations)
+                    except Exception:
+                        educations = []
+                if isinstance(educations, list):
+                    for ed in educations:
+                        if isinstance(ed, dict):
+                            deg = (ed.get('degree') or ed.get('qualification') or '').strip()
+                            inst = (ed.get('institution') or ed.get('university') or '').strip()
+                            if deg or inst:
+                                py = ed.get('passing_year') or ed.get('graduation_year')
+                                try:
+                                    py_int = int(py) if py else None
+                                except ValueError:
+                                    py_int = None
+                                Education.objects.create(
+                                    profile=profile,
+                                    degree=deg or 'Degree',
+                                    institution=inst or 'Institution',
+                                    field_of_study=(ed.get('field_of_study') or '').strip() or None,
+                                    passing_year=py_int,
+                                    percentage_or_cgpa=(ed.get('percentage_or_cgpa') or '').strip() or None
+                                )
 
                 return JsonResponse({
                     "success": True,
