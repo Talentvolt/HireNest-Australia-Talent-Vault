@@ -17,6 +17,8 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.crypto import constant_time_compare
@@ -543,3 +545,128 @@ class HirenestAdminApplicationsAPIView(View):
             'count': queryset.count(),
             'applications': serialize_application_queryset(queryset),
         })
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class HirenestAdminCandidatesCreateAPIView(View):
+    """
+    Secure JSON API for creating candidate profiles in the HireNest database only
+    (consumed by TalentVault Admin Portal via HireNest Candidate Parser).
+
+    POST /api/admin/candidates/ -> create candidate profile
+    """
+    def _forbidden(self):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    def post(self, request):
+        if not _is_hirenest_admin(request):
+            return self._forbidden()
+
+        try:
+            if request.content_type and 'application/json' in request.content_type:
+                data = json.loads(request.body.decode('utf-8'))
+            else:
+                data = request.POST
+        except Exception:
+            data = request.POST
+
+        email = (data.get('email') or '').strip().lower()
+        phone = (data.get('phone_number') or data.get('phone') or '').strip()
+        full_name = (data.get('full_name') or 'Candidate').strip()
+        ignore_duplicate = str(data.get('ignore_duplicate', 'false')).lower() in ('true', '1', 'yes')
+
+        if not email:
+            return JsonResponse({'success': False, 'message': 'Email address is required.'}, status=400)
+
+        # Duplicate check in HireNest DB
+        from apps.candidates.models import CandidateProfile, CandidateSkill
+        existing_user = None
+        if phone:
+            existing_user = User.objects.filter(Q(email=email) | Q(phone_number=phone)).first()
+        else:
+            existing_user = User.objects.filter(email=email).first()
+
+        if existing_user and not ignore_duplicate:
+            existing_profile = getattr(existing_user, 'candidate_profile', None)
+            return JsonResponse({
+                "success": False,
+                "stage": "duplicate",
+                "message": "Candidate profile with this email or phone number already exists in HireNest database.",
+                "duplicate_candidate": {
+                    "candidate_id": str(existing_profile.id) if existing_profile else "",
+                    "name": existing_profile.full_name if existing_profile else "Unknown",
+                    "email": existing_user.email,
+                    "phone": existing_user.phone_number or "Not specified",
+                    "current_company": existing_profile.current_company if existing_profile else "Not specified"
+                }
+            }, status=400)
+
+        if existing_user and ignore_duplicate:
+            import time
+            if '@' in email:
+                parts = email.split('@')
+                email = f"{parts[0]}+anyway{int(time.time())}@{parts[1]}"
+            else:
+                email = f"{email}+anyway{int(time.time())}"
+
+        try:
+            with transaction.atomic():
+                user = User.objects.create(
+                    email=email,
+                    role=User.Role.CANDIDATE,
+                    phone_number=phone if phone else None,
+                    first_name=full_name.split()[0] if full_name else '',
+                    last_name=" ".join(full_name.split()[1:]) if len(full_name.split()) > 1 else ''
+                )
+                user.set_unusable_password()
+                user.save()
+
+                profile = CandidateProfile.objects.create(
+                    user=user,
+                    full_name=full_name,
+                    current_company=(data.get('current_company') or '').strip(),
+                    current_designation=(data.get('current_designation') or '').strip(),
+                    total_experience=float(data.get('total_experience') or 0.0),
+                    location=(data.get('location') or 'Australia').strip(),
+                    summary=(data.get('summary') or '').strip(),
+                    linkedin_url=(data.get('linkedin_url') or '').strip() or None,
+                    portfolio_url=(data.get('portfolio_url') or '').strip() or None,
+                    notice_period=int(data.get('notice_period') or 30),
+                )
+
+                curr_sal = data.get('current_salary')
+                if curr_sal not in (None, ''):
+                    try:
+                        profile.current_salary = float(curr_sal)
+                    except ValueError:
+                        pass
+
+                exp_sal = data.get('expected_salary')
+                if exp_sal not in (None, ''):
+                    try:
+                        profile.expected_salary = float(exp_sal)
+                    except ValueError:
+                        pass
+                profile.save()
+
+                skills = data.get('skills')
+                if skills:
+                    if isinstance(skills, str):
+                        skill_list = [s.strip() for s in skills.split(',') if s.strip()]
+                    elif isinstance(skills, list):
+                        skill_list = [str(s).strip() for s in skills if str(s).strip()]
+                    else:
+                        skill_list = []
+                    for s in skill_list:
+                        CandidateSkill.objects.get_or_create(profile=profile, skill_name=s[:100])
+
+                return JsonResponse({
+                    "success": True,
+                    "candidate_id": str(profile.id),
+                    "message": "Candidate profile successfully created in HireNest database."
+                })
+        except Exception as exc:
+            return JsonResponse({
+                "success": False,
+                "message": f"Failed to create candidate in HireNest database: {str(exc)}"
+            }, status=500)

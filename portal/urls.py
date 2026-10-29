@@ -37,6 +37,7 @@ from .employer_views import (
     HirenestEmployerApprovalsAPIView,
     HirenestAdminJobsAPIView,
     HirenestAdminApplicationsAPIView,
+    HirenestAdminCandidatesCreateAPIView,
 )
 
 app_name = 'portal'
@@ -92,6 +93,9 @@ urlpatterns = [
     # Secure server-to-server admin applications API (TalentVault Admin Portal)
     path('api/admin/applications/', HirenestAdminApplicationsAPIView.as_view(), name='admin_applications_api'),
     path('api/admin/applications/<uuid:application_id>/', HirenestAdminApplicationsAPIView.as_view(), name='admin_application_detail_api'),
+
+    # Secure server-to-server admin candidates create API (TalentVault HireNest Candidate Parser)
+    path('api/admin/candidates/', HirenestAdminCandidatesCreateAPIView.as_view(), name='admin_candidates_create_api'),
 
     # Informational & Directories
     path('companies/', HirenestCompaniesView.as_view(), name='companies'),
